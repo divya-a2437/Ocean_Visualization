@@ -1,0 +1,19 @@
+# Node
+node_modules/
+.next/
+out/
+frontend/.env*.local
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+backend/.venv/
+
+# Data (raw/processed are generated, not committed except small samples)
+data/raw/*.nc
+!data/raw/.gitkeep
+
+# OS
+.DS_Store
