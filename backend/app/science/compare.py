@@ -1,100 +1,319 @@
 """
 Deterministic model-vs-observation science.
 
-CONVENTION: difference = model - observation
-  A positive bias means the model runs warmer/saltier than observations.
+Convention:
+    difference = model - observation
 
-No AI/LLM involvement anywhere in this module. Every function here is a
-pure, reproducible numerical computation over NumPy arrays.
+A positive bias means the model value is higher than the observation.
+
+There is deliberately NO AI/LLM involvement in this module.
+All calculations are deterministic numerical operations.
 """
+
 from __future__ import annotations
+
 import bisect
+from datetime import datetime
+
 import numpy as np
 
 
+def parse_iso_time(value: str) -> datetime:
+    """Parse an ISO-8601 timestamp, including timestamps ending in Z."""
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
 def nearest_time_index(times: list[str], target_time: str) -> int:
-    """Pick the index of the dataset time step nearest to target_time.
-    Both are ISO 8601 strings; string comparison after normalizing to
-    naive-UTC-safe datetimes keeps this simple and dependency-free."""
-    from datetime import datetime
+    """Return the index of the model time nearest to the observation time."""
+    target = parse_iso_time(target_time)
 
-    def parse(t: str) -> datetime:
-        return datetime.fromisoformat(t.replace("Z", "+00:00"))
+    parsed = [parse_iso_time(t) for t in times]
 
-    target = parse(target_time)
-    parsed = [parse(t) for t in times]
-    diffs = [abs((p - target).total_seconds()) for p in parsed]
-    return int(np.argmin(diffs))
+    differences = [
+        abs((timestamp - target).total_seconds())
+        for timestamp in parsed
+    ]
+
+    return int(np.argmin(differences))
+
+
+def time_difference_hours(
+    model_time: str,
+    observation_time: str,
+) -> float:
+    """Return absolute model-observation time difference in hours."""
+    model_dt = parse_iso_time(model_time)
+    observation_dt = parse_iso_time(observation_time)
+
+    seconds = abs(
+        (model_dt - observation_dt).total_seconds()
+    )
+
+    return seconds / 3600.0
 
 
 def bilinear_interpolate(
-    lats: list[float], lons: list[float], grid: np.ndarray, lat: float, lon: float
+    lats: list[float],
+    lons: list[float],
+    grid: np.ndarray,
+    lat: float,
+    lon: float,
 ) -> float:
-    """Bilinear interpolation of a 2D grid (shape [nLat, nLon]) at (lat, lon).
-    `grid` may contain NaN for land/no-data; if any of the 4 corners used is
-    NaN, falls back to the nearest non-NaN corner among the 4 (documented
-    MVP simplification instead of a full masked-interpolation scheme)."""
-    lats_arr = np.asarray(lats)
-    lons_arr = np.asarray(lons)
+    """
+    Bilinearly interpolate a 2D latitude/longitude grid.
 
-    # clamp to grid bounds (MVP: no extrapolation)
-    lat_c = min(max(lat, lats_arr.min()), lats_arr.max())
-    lon_c = min(max(lon, lons_arr.min()), lons_arr.max())
+    If one or more of the four surrounding cells are NaN,
+    the mean of the valid surrounding cells is used.
 
-    i1 = bisect.bisect_right(lats_arr.tolist(), lat_c) - 1
-    i1 = min(max(i1, 0), len(lats_arr) - 2) if len(lats_arr) > 1 else 0
-    i2 = i1 + 1 if len(lats_arr) > 1 else 0
+    If all surrounding cells are NaN, return NaN.
 
-    j1 = bisect.bisect_right(lons_arr.tolist(), lon_c) - 1
-    j1 = min(max(j1, 0), len(lons_arr) - 2) if len(lons_arr) > 1 else 0
-    j2 = j1 + 1 if len(lons_arr) > 1 else 0
+    Coordinates outside the grid are clamped to the grid boundary.
+    """
 
-    lat1, lat2 = lats_arr[i1], lats_arr[i2]
-    lon1, lon2 = lons_arr[j1], lons_arr[j2]
+    lats_arr = np.asarray(lats, dtype=float)
+    lons_arr = np.asarray(lons, dtype=float)
 
-    q11 = grid[i1, j1]
-    q12 = grid[i1, j2]
-    q21 = grid[i2, j1]
-    q22 = grid[i2, j2]
+    if lats_arr.size == 0 or lons_arr.size == 0:
+        return float("nan")
 
-    corners = [q11, q12, q21, q22]
-    if any(np.isnan(c) for c in corners):
-        valid = [c for c in corners if not np.isnan(c)]
-        if not valid:
-            return float("nan")
-        return float(np.mean(valid))  # documented fallback near land/edges
+    # Keep coordinates inside the available model domain.
+    lat_clamped = min(
+        max(lat, float(lats_arr.min())),
+        float(lats_arr.max()),
+    )
+
+    lon_clamped = min(
+        max(lon, float(lons_arr.min())),
+        float(lons_arr.max()),
+    )
+
+    # Latitude indices.
+    if len(lats_arr) == 1:
+        i1 = i2 = 0
+    else:
+        i1 = bisect.bisect_right(
+            lats_arr.tolist(),
+            lat_clamped,
+        ) - 1
+
+        i1 = min(
+            max(i1, 0),
+            len(lats_arr) - 2,
+        )
+
+        i2 = i1 + 1
+
+    # Longitude indices.
+    if len(lons_arr) == 1:
+        j1 = j2 = 0
+    else:
+        j1 = bisect.bisect_right(
+            lons_arr.tolist(),
+            lon_clamped,
+        ) - 1
+
+        j1 = min(
+            max(j1, 0),
+            len(lons_arr) - 2,
+        )
+
+        j2 = j1 + 1
+
+    # Four surrounding grid cells.
+    q11 = float(grid[i1, j1])
+    q12 = float(grid[i1, j2])
+    q21 = float(grid[i2, j1])
+    q22 = float(grid[i2, j2])
+
+    corners = [
+        q11,
+        q12,
+        q21,
+        q22,
+    ]
+
+    # Ignore missing values.
+    valid = [
+        value
+        for value in corners
+        if np.isfinite(value)
+    ]
+
+    # Entire surrounding region is missing.
+    if not valid:
+        return float("nan")
+
+    # If any corner is missing, avoid inventing a gradient
+    # through the missing region.
+    if len(valid) < 4:
+        return float(np.mean(valid))
+
+    # Latitude interpolation fraction.
+    lat1 = float(lats_arr[i1])
+    lat2 = float(lats_arr[i2])
 
     if lat2 == lat1:
         t = 0.0
     else:
-        t = (lat_c - lat1) / (lat2 - lat1)
+        t = (lat_clamped - lat1) / (lat2 - lat1)
+
+    # Longitude interpolation fraction.
+    lon1 = float(lons_arr[j1])
+    lon2 = float(lons_arr[j2])
+
     if lon2 == lon1:
         u = 0.0
     else:
-        u = (lon_c - lon1) / (lon2 - lon1)
+        u = (lon_clamped - lon1) / (lon2 - lon1)
 
-    top = q11 * (1 - u) + q12 * u
-    bottom = q21 * (1 - u) + q22 * u
-    return float(top * (1 - t) + bottom * t)
+    # Interpolate longitude first.
+    top = q11 * (1.0 - u) + q12 * u
+    bottom = q21 * (1.0 - u) + q22 * u
 
-
-def linear_interp_depth(depths: list[float], values: list[float], target_depth: float) -> float:
-    """Linear interpolation of a 1D depth profile at target_depth.
-    Clamps to the nearest endpoint outside the profile's range (MVP: no
-    extrapolation beyond the sampled depth range)."""
-    depths_arr = np.asarray(depths, dtype=float)
-    values_arr = np.asarray(values, dtype=float)
-    if target_depth <= depths_arr[0]:
-        return float(values_arr[0])
-    if target_depth >= depths_arr[-1]:
-        return float(values_arr[-1])
-    return float(np.interp(target_depth, depths_arr, values_arr))
+    # Then interpolate latitude.
+    return float(
+        top * (1.0 - t) + bottom * t
+    )
 
 
-def compute_error_metrics(difference: list[float]) -> dict[str, float]:
-    """bias/MAE/RMSE from a difference array. difference = model - observed."""
-    d = np.asarray(difference, dtype=float)
+def linear_interp_depth(
+    depths: list[float],
+    values: list[float],
+    target_depth: float,
+) -> float:
+    """
+    Linearly interpolate a model profile at target_depth.
+
+    IMPORTANT:
+    No extrapolation or clamping is performed.
+
+    If target_depth lies outside the model depth range,
+    NaN is returned.
+    """
+
+    depths_arr = np.asarray(
+        depths,
+        dtype=float,
+    )
+
+    values_arr = np.asarray(
+        values,
+        dtype=float,
+    )
+
+    if len(depths_arr) == 0:
+        return float("nan")
+
+    if len(depths_arr) != len(values_arr):
+        raise ValueError(
+            "depths and values must have the same length"
+        )
+
+    if not np.isfinite(target_depth):
+        return float("nan")
+
+    # Do NOT extrapolate beyond the model domain.
+    if (
+        target_depth < depths_arr[0]
+        or target_depth > depths_arr[-1]
+    ):
+        return float("nan")
+
+    # Exact model depth.
+    exact_indices = np.where(
+        depths_arr == target_depth
+    )[0]
+
+    if len(exact_indices) > 0:
+        value = values_arr[exact_indices[0]]
+
+        if np.isfinite(value):
+            return float(value)
+
+        return float("nan")
+
+    # Find surrounding model depths.
+    upper_index = int(
+        np.searchsorted(
+            depths_arr,
+            target_depth,
+        )
+    )
+
+    if (
+        upper_index <= 0
+        or upper_index >= len(depths_arr)
+    ):
+        return float("nan")
+
+    lower_index = upper_index - 1
+
+    d1 = depths_arr[lower_index]
+    d2 = depths_arr[upper_index]
+
+    v1 = values_arr[lower_index]
+    v2 = values_arr[upper_index]
+
+    # Cannot interpolate through missing model values.
+    if (
+        not np.isfinite(v1)
+        or not np.isfinite(v2)
+    ):
+        return float("nan")
+
+    if d2 == d1:
+        return float(v1)
+
+    fraction = (
+        target_depth - d1
+    ) / (
+        d2 - d1
+    )
+
+    return float(
+        v1 + fraction * (v2 - v1)
+    )
+
+
+def compute_error_metrics(
+    difference: list[float],
+) -> dict[str, float]:
+    """
+    Compute deterministic error metrics.
+
+    difference = model - observation
+
+    Returns:
+        bias = mean(model - observation)
+        mae  = mean(abs(model - observation))
+        rmse = sqrt(mean((model - observation)^2))
+    """
+
+    d = np.asarray(
+        difference,
+        dtype=float,
+    )
+
+    # Remove invalid values.
+    d = d[np.isfinite(d)]
+
+    if len(d) == 0:
+        raise ValueError(
+            "No valid model-observation differences available"
+        )
+
     bias = float(np.mean(d))
-    mae = float(np.mean(np.abs(d)))
-    rmse = float(np.sqrt(np.mean(d ** 2)))
-    return {"bias": bias, "mae": mae, "rmse": rmse}
+
+    mae = float(
+        np.mean(np.abs(d))
+    )
+
+    rmse = float(
+        np.sqrt(np.mean(d ** 2))
+    )
+
+    return {
+        "bias": bias,
+        "mae": mae,
+        "rmse": rmse,
+    }

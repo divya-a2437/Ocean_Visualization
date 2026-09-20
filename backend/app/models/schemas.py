@@ -1,10 +1,13 @@
 """
-Pydantic models. Field names are identical to the TypeScript interfaces in
-docs/DATA_SCHEMA.md on purpose -- do not rename fields here without updating
-that file and the frontend types together.
+Pydantic models for the Ocean Visualization API.
+
+Field names intentionally mirror the TypeScript interfaces.
+Keep backend and frontend contracts synchronized.
 """
+
 from typing import Optional
-from pydantic import BaseModel, Field
+
+from pydantic import BaseModel
 
 
 class BBox(BaseModel):
@@ -36,7 +39,7 @@ class ModelFieldSlice(BaseModel):
 
 class Observation(BaseModel):
     id: str
-    platformType: str  # "argo" | "glider"
+    platformType: str
     lat: float
     lon: float
     time: str
@@ -52,10 +55,30 @@ class Profile(BaseModel):
 class ModelObsComparison(BaseModel):
     observationId: str
     variable: str
+
+    # Only depths where both model and observation have valid data.
     depths: list[float]
+
     observedValues: list[float]
     modelValues: list[float]
-    difference: list[float]  # model - observed
+
+    # Convention: model - observation
+    difference: list[float]
+
     bias: float
     mae: float
     rmse: float
+
+    # Comparison metadata
+    modelTime: str
+    observationTime: str
+    timeDifferenceHours: float
+
+    validSampleCount: int
+    comparisonDepthMin: float
+    comparisonDepthMax: float
+
+    # Explicitly document the interpolation used.
+    interpolationHorizontal: str
+    interpolationVertical: str
+    interpolationTime: str
