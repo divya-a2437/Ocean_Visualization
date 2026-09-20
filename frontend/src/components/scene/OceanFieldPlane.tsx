@@ -3,7 +3,6 @@
 import { useMemo } from "react";
 import * as THREE from "three";
 import { ModelFieldSlice } from "@/lib/types";
-import { colormapValue } from "@/lib/colormap";
 
 interface Props {
   slice: ModelFieldSlice;
@@ -11,88 +10,188 @@ interface Props {
   verticalExaggeration: number;
 }
 
-/**
- * Renders one (variable, time, depth) field slice as a flat plane with a
- * DataTexture built from the grid values. This is the MVP-recommended
- * approach (see ARCHITECTURE.md Section 9): cheap geometry, re-colored by
- * swapping the texture rather than rebuilding the mesh on every change.
- */
-export function OceanFieldPlane({ slice, opacity, verticalExaggeration }: Props) {
+function oceanColor(t: number): [number, number, number] {
+  const stops = [
+    { t: 0.0, c: [7, 39, 78] },
+    { t: 0.2, c: [8, 91, 133] },
+    { t: 0.4, c: [0, 157, 166] },
+    { t: 0.6, c: [53, 178, 112] },
+    { t: 0.8, c: [191, 205, 66] },
+    { t: 1.0, c: [255, 224, 82] },
+  ];
+
+  const value = Math.max(0, Math.min(1, t));
+
+  for (let i = 0; i < stops.length - 1; i++) {
+    const left = stops[i];
+    const right = stops[i + 1];
+
+    if (value >= left.t && value <= right.t) {
+      const local =
+        (value - left.t) / (right.t - left.t);
+
+      return [
+        Math.round(
+          left.c[0] +
+            (right.c[0] - left.c[0]) * local,
+        ),
+        Math.round(
+          left.c[1] +
+            (right.c[1] - left.c[1]) * local,
+        ),
+        Math.round(
+          left.c[2] +
+            (right.c[2] - left.c[2]) * local,
+        ),
+      ];
+    }
+  }
+
+  return stops[stops.length - 1].c as [
+    number,
+    number,
+    number,
+  ];
+}
+
+function getRange(
+  slice: ModelFieldSlice,
+): [number, number] {
+  let min = Infinity;
+  let max = -Infinity;
+
+  for (const row of slice.values) {
+    for (const value of row) {
+      if (
+        value === null ||
+        !Number.isFinite(value)
+      ) {
+        continue;
+      }
+
+      min = Math.min(min, value);
+      max = Math.max(max, value);
+    }
+  }
+
+  if (
+    !Number.isFinite(min) ||
+    !Number.isFinite(max)
+  ) {
+    return [0, 1];
+  }
+
+  return [min, max];
+}
+
+export function OceanFieldPlane({
+  slice,
+  opacity,
+  verticalExaggeration,
+}: Props) {
   const { texture } = useMemo(() => {
     const nLat = slice.values.length;
     const nLon = slice.values[0]?.length ?? 0;
 
-    let min = Infinity;
-    let max = -Infinity;
-    for (const row of slice.values) {
-      for (const v of row) {
-        if (v === null) continue;
-        if (v < min) min = v;
-        if (v > max) max = v;
-      }
-    }
-    if (!isFinite(min) || !isFinite(max)) {
-      min = 0;
-      max = 1;
-    }
+    const [min, max] = getRange(slice);
 
-    const data = new Uint8Array(nLat * nLon * 4);
+    const data = new Uint8Array(
+      nLat * nLon * 4,
+    );
+
     for (let i = 0; i < nLat; i++) {
       for (let j = 0; j < nLon; j++) {
-        // texture row 0 = top; flip so latitude increases upward visually
-        const flippedRow = nLat - 1 - i;
-        const idx = (flippedRow * nLon + j) * 4;
-        const v = slice.values[i][j];
-        if (v === null) {
-          // land / no-data: transparent
-          data[idx] = 40;
-          data[idx + 1] = 40;
-          data[idx + 2] = 45;
-          data[idx + 3] = 0;
-        } else {
-          const t = (v - min) / (max - min || 1);
-          const [r, g, b] = colormapValue(t);
-          data[idx] = r;
-          data[idx + 1] = g;
-          data[idx + 2] = b;
-          data[idx + 3] = 255;
+        const flippedRow =
+          nLat - 1 - i;
+
+        const index =
+          (flippedRow * nLon + j) * 4;
+
+        const value =
+          slice.values[i][j];
+
+        if (
+          value === null ||
+          !Number.isFinite(value)
+        ) {
+          data[index] = 0;
+          data[index + 1] = 0;
+          data[index + 2] = 0;
+          data[index + 3] = 0;
+          continue;
         }
+
+        const normalized =
+          max === min
+            ? 0.5
+            : (value - min) /
+              (max - min);
+
+        const [r, g, b] =
+          oceanColor(normalized);
+
+        data[index] = r;
+        data[index + 1] = g;
+        data[index + 2] = b;
+        data[index + 3] = 255;
       }
     }
 
-    const tex = new THREE.DataTexture(data, nLon, nLat, THREE.RGBAFormat);
-    tex.needsUpdate = true;
-    tex.magFilter = THREE.LinearFilter;
-    tex.minFilter = THREE.LinearFilter;
-    return { texture: tex, min, max };
+    const texture =
+      new THREE.DataTexture(
+        data,
+        nLon,
+        nLat,
+        THREE.RGBAFormat,
+      );
+
+    texture.needsUpdate = true;
+    texture.magFilter =
+      THREE.LinearFilter;
+    texture.minFilter =
+      THREE.LinearFilter;
+    texture.wrapS =
+      THREE.ClampToEdgeWrapping;
+    texture.wrapT =
+      THREE.ClampToEdgeWrapping;
+
+    return { texture };
   }, [slice]);
 
-  // Depth pushes the plane down (negative Y), scaled by exaggeration so
-  // depth navigation is visually legible without true volumetric rendering.
-  const yPosition = -(slice.depth / 40) * verticalExaggeration;
+  const yPosition =
+    -(slice.depth / 40) *
+    verticalExaggeration;
 
   return (
-    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, yPosition, 0]}>
-      <planeGeometry args={[10, 10, 1, 1]} />
+    <mesh
+      rotation={[
+        -Math.PI / 2,
+        0,
+        0,
+      ]}
+      position={[
+        0,
+        yPosition,
+        0,
+      ]}
+    >
+      <planeGeometry
+        args={[10, 10, 1, 1]}
+      />
+
       <meshBasicMaterial
         map={texture}
         transparent
         opacity={opacity}
         side={THREE.DoubleSide}
+        depthWrite={false}
       />
     </mesh>
   );
 }
 
-export function fieldValueRange(slice: ModelFieldSlice): [number, number] {
-  let min = Infinity;
-  let max = -Infinity;
-  for (const row of slice.values) {
-    for (const v of row) {
-      if (v === null) continue;
-      if (v < min) min = v;
-      if (v > max) max = v;
-    }
-  }
-  return [isFinite(min) ? min : 0, isFinite(max) ? max : 1];
+export function fieldValueRange(
+  slice: ModelFieldSlice,
+): [number, number] {
+  return getRange(slice);
 }
