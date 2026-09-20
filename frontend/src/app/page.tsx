@@ -201,6 +201,7 @@ export default function Home() {
             observation={selectedObservation}
             profile={profile}
             comparison={comparison}
+            dataset={activeDataset}
             loading={analysisLoading}
             error={analysisError}
           />
