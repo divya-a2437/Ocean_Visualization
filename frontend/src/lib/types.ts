@@ -46,11 +46,25 @@ export interface Profile {
 export interface ModelObsComparison {
   observationId: string;
   variable: string;
+
   depths: number[];
   observedValues: number[];
   modelValues: number[];
   difference: number[];
+
   bias: number;
   mae: number;
   rmse: number;
+
+  modelTime: string;
+  observationTime: string;
+  timeDifferenceHours: number;
+
+  validSampleCount: number;
+  comparisonDepthMin: number;
+  comparisonDepthMax: number;
+
+  interpolationHorizontal: string;
+  interpolationVertical: string;
+  interpolationTime: string;
 }
