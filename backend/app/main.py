@@ -5,14 +5,19 @@ from app.routes.api import router as api_router
 
 app = FastAPI(
     title="Ocean 3D Visualization Platform API",
-    description="PS 26067 -- serves preprocessed ocean model + observation data. "
-                 "Current dataset is a representative synthetic sample (see README).",
+    description=(
+        "PS 26067 -- serves preprocessed ocean model + observation data. "
+        "Current dataset is a representative synthetic sample (see README)."
+    ),
     version="0.1.0",
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=[
+        "http://localhost:3000",
+        "https://ocean-visualization.vercel.app",
+    ],
     allow_methods=["GET"],
     allow_headers=["*"],
 )
