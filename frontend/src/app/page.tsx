@@ -1,12 +1,34 @@
 "use client";
 
 import { useEffect, useState } from "react";
+
 import { api } from "@/lib/api";
 import { useAppStore } from "@/store/useAppStore";
+
 import { OceanScene } from "@/components/scene/OceanScene";
 import { ControlPanel } from "@/components/panels/ControlPanel";
 import { AnalysisPanel } from "@/components/panels/AnalysisPanel";
-import { ModelFieldSlice, Profile, ModelObsComparison } from "@/lib/types";
+
+import {
+  ModelFieldSlice,
+  Profile,
+  ModelObsComparison,
+} from "@/lib/types";
+
+function formatTime(value?: string) {
+  if (!value) return "—";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date
+    .toISOString()
+    .replace("T", " ")
+    .replace(".000Z", " UTC");
+}
 
 export default function Home() {
   const {
@@ -20,6 +42,7 @@ export default function Home() {
     verticalExaggeration,
     observations,
     selectedObservationId,
+
     setDatasets,
     setActiveDataset,
     setVariable,
@@ -32,178 +55,497 @@ export default function Home() {
     selectObservation,
   } = useAppStore();
 
-  const [slice, setSlice] = useState<ModelFieldSlice | null>(null);
-  const [sliceError, setSliceError] = useState<string | null>(null);
+  const [slice, setSlice] =
+    useState<ModelFieldSlice | null>(
+      null,
+    );
 
-  const [profile, setProfile] = useState<Profile | null>(null);
-  const [comparison, setComparison] = useState<ModelObsComparison | null>(null);
-  const [analysisLoading, setAnalysisLoading] = useState(false);
-  const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [sliceLoading, setSliceLoading] =
+    useState(false);
 
-  const activeDataset = datasets.find((d) => d.id === activeDatasetId) ?? null;
+  const [sliceError, setSliceError] =
+    useState<string | null>(null);
 
-  // Milestone 1: fetch datasets, pick the first one.
+  const [profile, setProfile] =
+    useState<Profile | null>(null);
+
+  const [comparison, setComparison] =
+    useState<ModelObsComparison | null>(
+      null,
+    );
+
+  const [analysisLoading, setAnalysisLoading] =
+    useState(false);
+
+  const [analysisError, setAnalysisError] =
+    useState<string | null>(null);
+
+  const activeDataset =
+    datasets.find(
+      (d) => d.id === activeDatasetId,
+    ) ?? null;
+
+  /*
+   * Dataset bootstrap
+   */
   useEffect(() => {
+    let cancelled = false;
+
     api
       .listDatasets()
       .then((ds) => {
+        if (cancelled) return;
+
         setDatasets(ds);
-        if (ds.length > 0) setActiveDataset(ds[0].id);
+
+        if (
+          ds.length > 0 &&
+          !activeDatasetId
+        ) {
+          setActiveDataset(ds[0].id);
+        }
       })
-      .catch((e) => setSliceError(String(e.message ?? e)));
-  }, [setDatasets, setActiveDataset]);
+      .catch((e) => {
+        if (cancelled) return;
 
-  // Fetch observations once we know the dataset.
+        setSliceError(
+          String(e.message ?? e),
+        );
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    setDatasets,
+    setActiveDataset,
+    activeDatasetId,
+  ]);
+
+  /*
+   * Reset variable/depth/time when switching
+   * to another dataset.
+   */
   useEffect(() => {
     if (!activeDataset) return;
-    api
-      .listObservations(activeDataset.id)
-      .then(setObservations)
-      .catch((e) => console.error("Failed to load observations", e));
-  }, [activeDataset, setObservations]);
 
-  // Milestone 1: fetch the field slice for current variable/time/depth and
-  // render it in the 3D scene. State updates happen inside the promise
-  // callbacks (not synchronously in the effect body) and are guarded by a
-  // `cancelled` flag so a stale, slow request can't overwrite a newer one.
+    if (
+      depthIndex >=
+      activeDataset.depths.length
+    ) {
+      setDepthIndex(0);
+    }
+
+    if (
+      timeIndex >=
+      activeDataset.times.length
+    ) {
+      setTimeIndex(0);
+    }
+
+    if (
+      !activeDataset.variables.includes(
+        variable,
+      )
+    ) {
+      const firstVariable =
+        activeDataset.variables[0];
+
+      if (firstVariable) {
+        setVariable(firstVariable);
+      }
+    }
+  }, [
+    activeDataset,
+    depthIndex,
+    timeIndex,
+    variable,
+    setDepthIndex,
+    setTimeIndex,
+    setVariable,
+  ]);
+
+  /*
+   * Observation loading
+   */
   useEffect(() => {
     if (!activeDataset) return;
-    const time = activeDataset.times[timeIndex];
-    const depth = activeDataset.depths[depthIndex];
-    if (time === undefined || depth === undefined) return;
 
     let cancelled = false;
+
     api
-      .getField({ datasetId: activeDataset.id, variable, time, depth })
+      .listObservations(
+        activeDataset.id,
+      )
       .then((data) => {
         if (cancelled) return;
+
+        setObservations(data);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+
+        console.error(
+          "Failed to load observations",
+          e,
+        );
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeDataset,
+    setObservations,
+  ]);
+
+  /*
+   * Field slice loading
+   */
+  useEffect(() => {
+    if (!activeDataset) return;
+
+    const time =
+      activeDataset.times[timeIndex];
+
+    const depth =
+      activeDataset.depths[depthIndex];
+
+    if (
+      time === undefined ||
+      depth === undefined
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+
+    setSliceLoading(true);
+    setSliceError(null);
+
+    api
+      .getField({
+        datasetId: activeDataset.id,
+        variable,
+        time,
+        depth,
+      })
+      .then((data) => {
+        if (cancelled) return;
+
         setSlice(data);
         setSliceError(null);
       })
       .catch((e) => {
         if (cancelled) return;
-        setSliceError(String(e.message ?? e));
+
+        setSliceError(
+          String(e.message ?? e),
+        );
+      })
+      .finally(() => {
+        if (cancelled) return;
+
+        setSliceLoading(false);
       });
+
     return () => {
       cancelled = true;
     };
-  }, [activeDataset, variable, timeIndex, depthIndex]);
+  }, [
+    activeDataset,
+    variable,
+    timeIndex,
+    depthIndex,
+  ]);
 
-  // Time animation: simple frame-step play/pause. Reads current index off
-  // the store directly (via getState) so the interval doesn't need to be
-  // torn down/rebuilt on every tick.
+  /*
+   * Time animation
+   */
   useEffect(() => {
-    if (!isPlaying || !activeDataset) return;
-    const totalTimes = activeDataset.times.length;
-    const id = setInterval(() => {
-      const current = useAppStore.getState().timeIndex;
-      const next = (current + 1) % totalTimes;
+    if (
+      !isPlaying ||
+      !activeDataset ||
+      activeDataset.times.length <= 1
+    ) {
+      return;
+    }
+
+    const id = window.setInterval(() => {
+      const current =
+        useAppStore.getState()
+          .timeIndex;
+
+      const total =
+        activeDataset.times.length;
+
+      const next =
+        current + 1 >= total
+          ? 0
+          : current + 1;
+
       setTimeIndex(next);
     }, 900);
-    return () => clearInterval(id);
-  }, [isPlaying, activeDataset, setTimeIndex]);
 
-  // Analysis panel: fetch profile + comparison when an observation is
-  // selected. Loading/error state is only ever set inside the promise
-  // callbacks, guarded by `cancelled`, for the same reason as above.
+    return () => {
+      window.clearInterval(id);
+    };
+  }, [
+    isPlaying,
+    activeDataset,
+    setTimeIndex,
+  ]);
+
+  /*
+   * Observation analysis
+   */
   useEffect(() => {
-    if (!selectedObservationId || !activeDataset) return;
+    if (
+      !selectedObservationId ||
+      !activeDataset
+    ) {
+      setProfile(null);
+      setComparison(null);
+      return;
+    }
+
     let cancelled = false;
 
     Promise.resolve()
       .then(() => {
         if (cancelled) return undefined;
+
         setAnalysisLoading(true);
         setAnalysisError(null);
+
         return Promise.all([
-          api.getProfile(selectedObservationId, variable),
-          api.compareObservation({
-            observationId: selectedObservationId,
+          api.getProfile(
+            selectedObservationId,
             variable,
-            datasetId: activeDataset.id,
+          ),
+
+          api.compareObservation({
+            observationId:
+              selectedObservationId,
+            variable,
+            datasetId:
+              activeDataset.id,
           }),
         ]);
       })
       .then((result) => {
-        if (cancelled || !result) return;
+        if (
+          cancelled ||
+          !result
+        ) {
+          return;
+        }
+
         const [p, c] = result;
+
         setProfile(p);
         setComparison(c);
       })
       .catch((e) => {
         if (cancelled) return;
-        setAnalysisError(String(e.message ?? e));
+
+        setAnalysisError(
+          String(e.message ?? e),
+        );
       })
       .finally(() => {
         if (cancelled) return;
+
         setAnalysisLoading(false);
       });
 
     return () => {
       cancelled = true;
     };
-  }, [selectedObservationId, variable, activeDataset]);
+  }, [
+    selectedObservationId,
+    variable,
+    activeDataset,
+  ]);
 
   const selectedObservation =
-    observations.find((o) => o.id === selectedObservationId) ?? null;
+    observations.find(
+      (o) =>
+        o.id ===
+        selectedObservationId,
+    ) ?? null;
+
+  const currentTime =
+    activeDataset?.times[
+      timeIndex
+    ];
+
+  const currentDepth =
+    activeDataset?.depths[
+      depthIndex
+    ];
 
   return (
-    <div className="flex h-screen w-screen flex-col bg-slate-950 text-slate-100">
-      <header className="flex items-center justify-between border-b border-slate-800 px-4 py-2">
-        <div>
-          <h1 className="text-sm font-semibold tracking-tight">
-            Ocean 3D Visualization Platform
-          </h1>
-          <p className="text-[10px] text-slate-500">
-            PS 26067 &middot; SIH 2026 &middot; Representative synthetic dataset
-          </p>
-        </div>
-        {sliceError && (
-          <div className="rounded bg-red-950 px-3 py-1 text-xs text-red-300">
-            {sliceError}
+    <div className="flex h-screen w-screen flex-col overflow-hidden bg-slate-950 text-slate-100">
+      {/* Header */}
+      <header className="flex h-14 shrink-0 items-center justify-between border-b border-slate-800 bg-slate-950 px-5">
+        <div className="flex items-center gap-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-sm font-semibold tracking-tight text-slate-100">
+                Ocean 3D
+              </h1>
+
+              <span className="rounded border border-slate-800 bg-slate-900 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wider text-slate-500">
+                SIH 26067
+              </span>
+            </div>
+
+            <p className="mt-0.5 text-[9px] text-slate-600">
+              Interactive ocean model &
+              observation workspace
+            </p>
           </div>
-        )}
+        </div>
+
+        <div className="flex items-center gap-4">
+          {activeDataset && (
+            <div className="hidden text-right sm:block">
+              <div className="font-mono text-[9px] text-slate-500">
+                {formatTime(currentTime)}
+              </div>
+
+              <div className="font-mono text-[8px] text-slate-700">
+                DEPTH{" "}
+                {currentDepth ?? "—"} M
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-center gap-2 rounded border border-emerald-900/50 bg-emerald-950/30 px-2.5 py-1.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+
+            <span className="font-mono text-[9px] uppercase tracking-wider text-emerald-500">
+              API online
+            </span>
+          </div>
+        </div>
       </header>
 
-      <div className="flex flex-1 overflow-hidden">
-        <aside className="w-72 border-r border-slate-800 bg-slate-900/40">
+      {/* Workspace */}
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        {/* Controls */}
+        <aside className="w-72 shrink-0 border-r border-slate-800 bg-slate-950">
           <ControlPanel
             dataset={activeDataset}
+            datasets={datasets}
             variable={variable}
             depthIndex={depthIndex}
             timeIndex={timeIndex}
             isPlaying={isPlaying}
             opacity={opacity}
-            verticalExaggeration={verticalExaggeration}
-            onVariableChange={setVariable}
-            onDepthIndexChange={setDepthIndex}
-            onTimeIndexChange={setTimeIndex}
-            onTogglePlay={togglePlaying}
-            onOpacityChange={setOpacity}
-            onExaggerationChange={setVerticalExaggeration}
+            verticalExaggeration={
+              verticalExaggeration
+            }
+            onDatasetChange={
+              setActiveDataset
+            }
+            onVariableChange={
+              setVariable
+            }
+            onDepthIndexChange={
+              setDepthIndex
+            }
+            onTimeIndexChange={
+              setTimeIndex
+            }
+            onTogglePlay={
+              togglePlaying
+            }
+            onOpacityChange={
+              setOpacity
+            }
+            onExaggerationChange={
+              setVerticalExaggeration
+            }
           />
         </aside>
 
-        <main className="flex-1 bg-slate-950">
+        {/* 3D viewport */}
+        <main className="relative min-w-0 flex-1 bg-slate-950">
           <OceanScene
             slice={slice}
             dataset={activeDataset}
-            observations={observations}
-            selectedObservationId={selectedObservationId}
-            onSelectObservation={selectObservation}
+            observations={
+              observations
+            }
+            selectedObservationId={
+              selectedObservationId
+            }
+            onSelectObservation={
+              selectObservation
+            }
             opacity={opacity}
-            verticalExaggeration={verticalExaggeration}
+            verticalExaggeration={
+              verticalExaggeration
+            }
+            loading={sliceLoading}
+            error={sliceError}
           />
+
+          {/* Bottom viewport status */}
+          {activeDataset && (
+            <div className="pointer-events-none absolute bottom-3 left-3 right-3 flex items-end justify-between">
+              <div className="rounded border border-slate-800 bg-slate-950/85 px-3 py-2 backdrop-blur-sm">
+                <div className="text-[8px] uppercase tracking-[0.16em] text-slate-600">
+                  Active field
+                </div>
+
+                <div className="mt-0.5 font-mono text-[10px] text-slate-300">
+                  {variable}
+                  {activeDataset.units[
+                    variable
+                  ]
+                    ? ` · ${activeDataset.units[variable]}`
+                    : ""}
+                  {" · "}
+                  {currentDepth ?? "—"} m
+                </div>
+              </div>
+
+              <div className="rounded border border-slate-800 bg-slate-950/85 px-3 py-2 text-right backdrop-blur-sm">
+                <div className="text-[8px] uppercase tracking-[0.16em] text-slate-600">
+                  Observations
+                </div>
+
+                <div className="mt-0.5 font-mono text-[10px] text-slate-300">
+                  {observations.length}{" "}
+                  in-situ profiles
+                </div>
+              </div>
+            </div>
+          )}
         </main>
 
-        <aside className="w-80 border-l border-slate-800 bg-slate-900/40">
+        {/* Analysis */}
+        <aside className="w-80 shrink-0 border-l border-slate-800 bg-slate-950">
           <AnalysisPanel
-            observation={selectedObservation}
+            observation={
+              selectedObservation
+            }
             profile={profile}
-            comparison={comparison}
-            dataset={activeDataset}
-            loading={analysisLoading}
-            error={analysisError}
+            comparison={
+              comparison
+            }
+            dataset={
+              activeDataset
+            }
+            loading={
+              analysisLoading
+            }
+            error={
+              analysisError
+            }
           />
         </aside>
       </div>
