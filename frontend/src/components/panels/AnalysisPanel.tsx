@@ -712,33 +712,59 @@ export function AnalysisPanel({
               </section>
 
               {/* Provenance */}
-              <section>
-                <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-500">
-                  Provenance
-                </div>
+                <section>
+                  <div className="mb-2 flex items-center justify-between">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-500">
+                      Provenance
+                    </div>
 
-                <div className="rounded border border-slate-800 bg-slate-950/50 px-3">
-                  <MethodRow
-                    label="Dataset"
-                    value={dataset?.name ?? "—"}
-                  />
+                    {dataset?.dataStatus === "representative" && (
+                      <div className="rounded border border-amber-900/60 bg-amber-950/20 px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.1em] text-amber-400">
+                        Representative data
+                      </div>
+                    )}
+                  </div>
 
-                  <MethodRow
-                    label="Source"
-                    value={dataset?.sourceLabel ?? "—"}
-                  />
+                  <div className="rounded border border-slate-800 bg-slate-950/50 px-3">
+                    <MethodRow
+                      label="Dataset"
+                      value={dataset?.name ?? "—"}
+                    />
 
-                  <MethodRow
-                    label="Observation"
-                    value={observation.id}
-                  />
+                    <MethodRow
+                      label="Dataset ID"
+                      value={dataset?.id ?? "—"}
+                    />
 
-                  <MethodRow
-                    label="Platform"
-                    value={observation.platformType.toUpperCase()}
-                  />
-                </div>
-              </section>
+                    <MethodRow
+                      label="Source"
+                      value={dataset?.sourceLabel ?? "—"}
+                    />
+
+                    <MethodRow
+                      label="Observation"
+                      value={observation.id}
+                    />
+
+                    <MethodRow
+                      label="Platform"
+                      value={observation.platformType.toUpperCase()}
+                    />
+
+                    <MethodRow
+                      label="Variable"
+                      value={comparison.variable}
+                    />
+                  </div>
+
+                  {dataset?.dataStatus === "representative" && (
+                    <div className="mt-2 rounded border border-amber-900/40 bg-amber-950/10 px-3 py-2 text-[10px] leading-4 text-amber-300/80">
+                      This deployment uses structurally representative data for
+                      demonstration and validation of the visualization workflow.
+                      Scientific conclusions should not be drawn from these values.
+                    </div>
+                  )}
+                </section>
 
               {/* Export */}
               <section>

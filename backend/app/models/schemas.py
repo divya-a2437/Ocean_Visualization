@@ -26,7 +26,8 @@ class DatasetMetadata(BaseModel):
     bbox: BBox
     units: dict[str, str]
     sourceLabel: str
-
+    dataStatus="representative"
+    dataStatus: Optional[str] = None
 
 class ModelFieldSlice(BaseModel):
     variable: str

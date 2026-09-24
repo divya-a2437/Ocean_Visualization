@@ -18,6 +18,7 @@ export interface DatasetMetadata {
   bbox: BBox;
   units: Record<string, string>;
   sourceLabel: string;
+  dataStatus?: "representative" | "observational" | "operational";
 }
 
 export interface ModelFieldSlice {
