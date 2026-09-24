@@ -482,6 +482,12 @@ export default function Home() {
             selectedObservationId={
               selectedObservationId
             }
+            selectedObservation={
+              selectedObservation
+            }
+            comparison={
+              comparison
+            }
             onSelectObservation={
               selectObservation
             }

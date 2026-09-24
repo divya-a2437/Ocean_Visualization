@@ -12,17 +12,21 @@ import {
 import {
   DatasetMetadata,
   ModelFieldSlice,
+  ModelObsComparison,
   Observation,
 } from "@/lib/types";
 
 import { OceanFieldPlane } from "./OceanFieldPlane";
 import { ObservationMarkers } from "./ObservationMarkers";
+import { ValidationProfile3D } from "./ValidationProfile3D";
 
 interface Props {
   slice: ModelFieldSlice | null;
   dataset: DatasetMetadata | null;
   observations: Observation[];
   selectedObservationId: string | null;
+  selectedObservation: Observation | null;
+  comparison: ModelObsComparison | null;
   onSelectObservation: (id: string) => void;
   opacity: number;
   verticalExaggeration: number;
@@ -318,6 +322,8 @@ export function OceanScene({
   dataset,
   observations,
   selectedObservationId,
+  selectedObservation,
+  comparison,
   onSelectObservation,
   opacity,
   verticalExaggeration,
@@ -387,6 +393,21 @@ export function OceanScene({
             }
           />
         )}
+        {dataset &&
+        selectedObservation &&
+        comparison && (
+        <ValidationProfile3D
+          observation={
+            selectedObservation
+          }
+          dataset={dataset}
+          comparison={comparison}
+          verticalExaggeration={
+            verticalExaggeration
+          }
+        />
+        )}
+
 
       {slice && dataset && (
         <>
