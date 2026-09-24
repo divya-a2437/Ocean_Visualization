@@ -31,6 +31,7 @@ def list_datasets():
 def get_dataset(dataset_id: str):
     try:
         return data_store.get_dataset_metadata(dataset_id)
+
     except data_store.DataNotFoundError:
         raise HTTPException(
             status_code=404,
@@ -47,6 +48,7 @@ def get_field(
 ):
     try:
         data_store.get_dataset_metadata(datasetId)
+
     except data_store.DataNotFoundError:
         raise HTTPException(
             status_code=404,
@@ -75,7 +77,9 @@ def get_field(
 
 
 @router.get("/observations", response_model=list[Observation])
-def list_observations(datasetId: str = Query(...)):
+def list_observations(
+    datasetId: str = Query(...),
+):
     try:
         return data_store.get_observations(datasetId)
 
@@ -169,7 +173,10 @@ def compare_observation(
     ):
         raise HTTPException(
             status_code=422,
-            detail="Observation location falls outside the dataset's bounding box",
+            detail=(
+                "Observation location falls outside "
+                "the dataset's bounding box"
+            ),
         )
 
     # ---------------------------------------------------------
@@ -204,17 +211,20 @@ def compare_observation(
     # 6. Load complete model field at selected time
     # ---------------------------------------------------------
 
-    lats, lons, model_depths, field_by_depth = (
-        data_store.get_full_field_array(
-            datasetId,
-            variable,
-            nearest_model_time,
-        )
+    (
+        lats,
+        lons,
+        model_depths,
+        field_by_depth,
+    ) = data_store.get_full_field_array(
+        datasetId,
+        variable,
+        nearest_model_time,
     )
 
     # ---------------------------------------------------------
     # 7. Horizontally interpolate model field
-    #    at the observation's lat/lon for every model depth.
+    #    at observation location for every model depth.
     # ---------------------------------------------------------
 
     model_at_depths: list[float] = []
@@ -231,10 +241,11 @@ def compare_observation(
         model_at_depths.append(value)
 
     # ---------------------------------------------------------
-    # 8. Vertically interpolate ONLY within model depth range.
+    # 8. Vertically interpolate model values.
     #
-    #    No extrapolation.
-    #    Observation points deeper than the model are excluded.
+    #    No extrapolation is performed.
+    #    Observation depths outside the model range
+    #    are excluded.
     # ---------------------------------------------------------
 
     comparison_depths: list[float] = []
@@ -252,16 +263,28 @@ def compare_observation(
             observation_depth,
         )
 
+        # No valid model value at this depth.
         if not np.isfinite(model_value):
             continue
 
+        # Ignore invalid observation values.
         if not np.isfinite(observation_value):
             continue
 
-        comparison_depths.append(float(observation_depth))
-        observed_values.append(float(observation_value))
-        model_values.append(float(model_value))
+        comparison_depths.append(
+            float(observation_depth)
+        )
 
+        observed_values.append(
+            float(observation_value)
+        )
+
+        model_values.append(
+            float(model_value)
+        )
+
+        # Difference convention:
+        # model - observation
         differences.append(
             float(model_value - observation_value)
         )
@@ -274,8 +297,8 @@ def compare_observation(
         raise HTTPException(
             status_code=422,
             detail=(
-                "No overlapping valid model-observation depths "
-                "are available for comparison"
+                "No overlapping valid model-observation "
+                "depths are available for comparison"
             ),
         )
 
@@ -283,17 +306,55 @@ def compare_observation(
     # 10. Calculate deterministic error metrics.
     # ---------------------------------------------------------
 
-    metrics = compute_error_metrics(differences)
+    metrics = compute_error_metrics(
+        differences
+    )
+
+    # ---------------------------------------------------------
+    # 10b. Identify maximum absolute deviation.
+    #
+    # This tells the user where the model differs
+    # most strongly from the observation profile.
+    # ---------------------------------------------------------
+
+    absolute_differences = np.abs(
+        np.asarray(
+            differences,
+            dtype=float,
+        )
+    )
+
+    max_difference_index = int(
+        np.argmax(absolute_differences)
+    )
+
+    max_absolute_difference = float(
+        absolute_differences[
+            max_difference_index
+        ]
+    )
+
+    max_difference_depth = float(
+        comparison_depths[
+            max_difference_index
+        ]
+    )
 
     # ---------------------------------------------------------
     # 11. Comparison depth range.
     # ---------------------------------------------------------
 
-    comparison_depth_min = min(comparison_depths)
-    comparison_depth_max = max(comparison_depths)
+    comparison_depth_min = min(
+        comparison_depths
+    )
+
+    comparison_depth_max = max(
+        comparison_depths
+    )
 
     # ---------------------------------------------------------
-    # 12. Return scientific comparison + provenance metadata.
+    # 12. Return scientific comparison +
+    #     provenance metadata.
     # ---------------------------------------------------------
 
     return ModelObsComparison(
@@ -317,12 +378,35 @@ def compare_observation(
             for value in differences
         ],
 
-        bias=round(metrics["bias"], 4),
-        mae=round(metrics["mae"], 4),
-        rmse=round(metrics["rmse"], 4),
+        bias=round(
+            metrics["bias"],
+            4,
+        ),
+
+        mae=round(
+            metrics["mae"],
+            4,
+        ),
+
+        rmse=round(
+            metrics["rmse"],
+            4,
+        ),
+
+        maxAbsoluteDifference=round(
+            max_absolute_difference,
+            4,
+        ),
+
+        maxDifferenceDepth=round(
+            max_difference_depth,
+            2,
+        ),
 
         modelTime=nearest_model_time,
+
         observationTime=obs["time"],
+
         timeDifferenceHours=round(
             time_difference_hours(
                 nearest_model_time,
@@ -331,12 +415,23 @@ def compare_observation(
             4,
         ),
 
-        validSampleCount=len(comparison_depths),
+        validSampleCount=len(
+            comparison_depths
+        ),
 
         comparisonDepthMin=comparison_depth_min,
+
         comparisonDepthMax=comparison_depth_max,
 
-        interpolationHorizontal="bilinear latitude/longitude",
-        interpolationVertical="linear depth",
-        interpolationTime="nearest model timestep",
+        interpolationHorizontal=(
+            "bilinear latitude/longitude"
+        ),
+
+        interpolationVertical=(
+            "linear depth"
+        ),
+
+        interpolationTime=(
+            "nearest model timestep"
+        ),
     )

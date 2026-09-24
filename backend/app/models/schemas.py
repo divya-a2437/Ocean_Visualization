@@ -56,20 +56,18 @@ class ModelObsComparison(BaseModel):
     observationId: str
     variable: str
 
-    # Only depths where both model and observation have valid data.
     depths: list[float]
-
     observedValues: list[float]
     modelValues: list[float]
-
-    # Convention: model - observation
     difference: list[float]
 
     bias: float
     mae: float
     rmse: float
 
-    # Comparison metadata
+    maxAbsoluteDifference: float
+    maxDifferenceDepth: float
+
     modelTime: str
     observationTime: str
     timeDifferenceHours: float
@@ -78,7 +76,6 @@ class ModelObsComparison(BaseModel):
     comparisonDepthMin: float
     comparisonDepthMax: float
 
-    # Explicitly document the interpolation used.
     interpolationHorizontal: str
     interpolationVertical: str
     interpolationTime: str

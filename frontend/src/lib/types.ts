@@ -1,4 +1,5 @@
 // Mirrors backend/app/models/schemas.py and docs/DATA_SCHEMA.md exactly.
+//
 // Do not rename fields here without updating both.
 
 export interface BBox {
@@ -56,6 +57,9 @@ export interface ModelObsComparison {
   mae: number;
   rmse: number;
 
+  maxAbsoluteDifference: number;
+  maxDifferenceDepth: number;
+
   modelTime: string;
   observationTime: string;
   timeDifferenceHours: number;
@@ -68,3 +72,4 @@ export interface ModelObsComparison {
   interpolationVertical: string;
   interpolationTime: string;
 }
+
