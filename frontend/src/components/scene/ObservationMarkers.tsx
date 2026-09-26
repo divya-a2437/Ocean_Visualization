@@ -11,24 +11,33 @@ interface Props {
   onSelect: (id: string) => void;
 }
 
-function latLonToXZ(
+const GLOBE_RADIUS = 5.085;
+
+function latLonToGlobe(
   lat: number,
   lon: number,
-  bbox: DatasetMetadata["bbox"],
-): [number, number] {
-  const lonSpan = bbox.maxLon - bbox.minLon;
-  const latSpan = bbox.maxLat - bbox.minLat;
+  radius: number,
+): THREE.Vector3 {
+  const latRad = THREE.MathUtils.degToRad(lat);
+  const lonRad = THREE.MathUtils.degToRad(lon);
 
-  const x =
-    ((lon - bbox.minLon) / lonSpan - 0.5) * 10;
+  const cosLat = Math.cos(latRad);
 
-  const z =
-    -((lat - bbox.minLat) / latSpan - 0.5) * 10;
-
-  return [x, z];
+  return new THREE.Vector3(
+    radius *
+      cosLat *
+      Math.sin(lonRad),
+    radius *
+      Math.sin(latRad),
+    radius *
+      cosLat *
+      Math.cos(lonRad),
+  );
 }
 
-function platformStyle(platformType: Observation["platformType"]) {
+function platformStyle(
+  platformType: Observation["platformType"],
+) {
   if (platformType === "glider") {
     return {
       color: "#f5b94c",
@@ -51,26 +60,62 @@ export function ObservationMarkers({
   return (
     <group>
       {observations.map((observation) => {
-        const [x, z] = latLonToXZ(
-          observation.lat,
-          observation.lon,
-          dataset.bbox,
+        const position =
+          latLonToGlobe(
+            observation.lat,
+            observation.lon,
+            GLOBE_RADIUS,
+          );
+
+        const normal =
+          position.clone().normalize();
+
+        /*
+         * The marker group is oriented so its local Y axis
+         * points away from the centre of the Earth.
+         *
+         * This lets the selection beam and ring sit naturally
+         * on the curved globe surface.
+         */
+        const orientation =
+          new THREE.Quaternion();
+
+        orientation.setFromUnitVectors(
+          new THREE.Vector3(0, 1, 0),
+          normal,
         );
 
-        const selected = observation.id === selectedId;
-        const style = platformStyle(observation.platformType);
+        const selected =
+          observation.id === selectedId;
+
+        const style =
+          platformStyle(
+            observation.platformType,
+          );
 
         return (
           <group
             key={observation.id}
-            position={[x, 0.12, z]}
+            position={position}
+            quaternion={orientation}
           >
-            {/* Selected validation beam */}
+            {/* Selected observation beam */}
             {selected && (
               <>
-                <mesh position={[0, 1.4, 0]}>
+                <mesh
+                  position={[
+                    0,
+                    0.75,
+                    0,
+                  ]}
+                >
                   <cylinderGeometry
-                    args={[0.012, 0.012, 2.8, 8]}
+                    args={[
+                      0.012,
+                      0.012,
+                      1.5,
+                      8,
+                    ]}
                   />
 
                   <meshBasicMaterial
@@ -80,10 +125,24 @@ export function ObservationMarkers({
                   />
                 </mesh>
 
-                <mesh position={[0, 2.8, 0]}>
-                  <sphereGeometry args={[0.07, 16, 16]} />
+                <mesh
+                  position={[
+                    0,
+                    1.52,
+                    0,
+                  ]}
+                >
+                  <sphereGeometry
+                    args={[
+                      0.075,
+                      16,
+                      16,
+                    ]}
+                  />
 
-                  <meshBasicMaterial color="#b7f34a" />
+                  <meshBasicMaterial
+                    color="#b7f34a"
+                  />
                 </mesh>
               </>
             )}
@@ -91,15 +150,29 @@ export function ObservationMarkers({
             {/* Selection ring */}
             {selected && (
               <mesh
-                rotation={[-Math.PI / 2, 0, 0]}
-                position={[0, 0.02, 0]}
+                rotation={[
+                  Math.PI / 2,
+                  0,
+                  0,
+                ]}
+                position={[
+                  0,
+                  0.025,
+                  0,
+                ]}
               >
-                <ringGeometry args={[0.14, 0.19, 32]} />
+                <ringGeometry
+                  args={[
+                    0.13,
+                    0.19,
+                    32,
+                  ]}
+                />
 
                 <meshBasicMaterial
                   color="#b7f34a"
                   transparent
-                  opacity={0.75}
+                  opacity={0.85}
                   side={THREE.DoubleSide}
                 />
               </mesh>
@@ -109,13 +182,21 @@ export function ObservationMarkers({
             <mesh
               onClick={(event) => {
                 event.stopPropagation();
-                onSelect(observation.id);
+                onSelect(
+                  observation.id,
+                );
               }}
-              scale={selected ? 1.35 : 1}
+              scale={
+                selected
+                  ? 1.35
+                  : 1
+              }
             >
               <sphereGeometry
                 args={[
-                  selected ? 0.11 : 0.065,
+                  selected
+                    ? 0.115
+                    : 0.075,
                   16,
                   16,
                 ]}
@@ -133,26 +214,35 @@ export function ObservationMarkers({
                     : style.emissive
                 }
                 emissiveIntensity={
-                  selected ? 0.7 : 0.35
+                  selected
+                    ? 0.8
+                    : 0.4
                 }
                 roughness={0.4}
                 metalness={0.1}
               />
             </mesh>
 
-            {/* Selected observation identity */}
+            {/* Selected observation information */}
             {selected && (
               <Html
                 distanceFactor={12}
-                position={[0.16, 0.25, 0]}
+                position={[
+                  0.18,
+                  0.25,
+                  0,
+                ]}
                 style={{
-                  pointerEvents: "none",
+                  pointerEvents:
+                    "none",
                 }}
               >
                 <div className="whitespace-nowrap rounded border border-slate-600 bg-slate-950/95 px-2.5 py-1.5 shadow-lg">
                   <div className="flex items-center gap-1.5">
                     <span className="font-mono text-[9px] font-semibold uppercase tracking-[0.12em] text-lime-300">
-                      {observation.platformType}
+                      {
+                        observation.platformType
+                      }
                     </span>
 
                     <span className="text-[8px] text-slate-700">
@@ -169,8 +259,10 @@ export function ObservationMarkers({
                   </div>
 
                   <div className="mt-0.5 text-[9px] text-slate-500">
-                    {observation.lat.toFixed(2)}°N ·{" "}
-                    {observation.lon.toFixed(2)}°E
+                    {observation.lat.toFixed(2)}
+                    °N ·{" "}
+                    {observation.lon.toFixed(2)}
+                    °E
                   </div>
                 </div>
               </Html>
