@@ -6,6 +6,7 @@ import {
   GizmoViewport,
   Grid,
   Html,
+  Line,
   OrbitControls,
 } from "@react-three/drei";
 
@@ -85,6 +86,254 @@ function getRange(
   return [min, max];
 }
 
+/* -------------------------------------------------------------------------- */
+/* 3D WATER COLUMN CONTEXT                                                    */
+/* -------------------------------------------------------------------------- */
+
+function WaterColumnContext({
+  dataset,
+  verticalExaggeration,
+}: {
+  dataset: DatasetMetadata;
+  verticalExaggeration: number;
+}) {
+  const maxDepth =
+    Math.max(...dataset.depths);
+
+  const depthScale = verticalExaggeration / 40;
+
+  const totalHeight =
+    maxDepth * depthScale;
+
+  const bottomY = -totalHeight;
+
+  /*
+   * Keep the outer frame slightly inside the scene.
+   * The actual field remains 10 × 10.
+   */
+  const halfSize = 5;
+
+  /*
+   * Reference depths.
+   *
+   * These are visual guides only. They do not represent
+   * additional scientific model slices.
+   */
+  const guideDepths = [
+    0,
+    50,
+    100,
+    200,
+    300,
+    400,
+  ].filter(
+    (depth) => depth <= maxDepth,
+  );
+
+  return (
+    <group>
+      {/* ------------------------------------------------------------------ */}
+      {/* Vertical water-column boundary                                     */}
+      {/* ------------------------------------------------------------------ */}
+
+      <Line
+        points={[
+          [-halfSize, 0, -halfSize],
+          [-halfSize, bottomY, -halfSize],
+        ]}
+        color="#334155"
+        transparent
+        opacity={0.65}
+        lineWidth={1}
+      />
+
+      <Line
+        points={[
+          [halfSize, 0, -halfSize],
+          [halfSize, bottomY, -halfSize],
+        ]}
+        color="#334155"
+        transparent
+        opacity={0.65}
+        lineWidth={1}
+      />
+
+      <Line
+        points={[
+          [-halfSize, 0, halfSize],
+          [-halfSize, bottomY, halfSize],
+        ]}
+        color="#334155"
+        transparent
+        opacity={0.65}
+        lineWidth={1}
+      />
+
+      <Line
+        points={[
+          [halfSize, 0, halfSize],
+          [halfSize, bottomY, halfSize],
+        ]}
+        color="#334155"
+        transparent
+        opacity={0.65}
+        lineWidth={1}
+      />
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Surface boundary                                                    */}
+      {/* ------------------------------------------------------------------ */}
+
+      <Line
+        points={[
+          [-halfSize, 0, -halfSize],
+          [halfSize, 0, -halfSize],
+          [halfSize, 0, halfSize],
+          [-halfSize, 0, halfSize],
+          [-halfSize, 0, -halfSize],
+        ]}
+        color="#475569"
+        transparent
+        opacity={0.75}
+        lineWidth={1}
+      />
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Bottom boundary                                                     */}
+      {/* ------------------------------------------------------------------ */}
+
+      <Line
+        points={[
+          [-halfSize, bottomY, -halfSize],
+          [halfSize, bottomY, -halfSize],
+          [halfSize, bottomY, halfSize],
+          [-halfSize, bottomY, halfSize],
+          [-halfSize, bottomY, -halfSize],
+        ]}
+        color="#334155"
+        transparent
+        opacity={0.45}
+        lineWidth={1}
+      />
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Horizontal depth reference planes                                   */}
+      {/* ------------------------------------------------------------------ */}
+
+      {guideDepths.map((depth) => {
+        const y =
+          -(depth * depthScale);
+
+        return (
+          <group
+            key={depth}
+            position={[0, y, 0]}
+          >
+            <Line
+              points={[
+                [-halfSize, 0, -halfSize],
+                [halfSize, 0, -halfSize],
+                [halfSize, 0, halfSize],
+                [-halfSize, 0, halfSize],
+                [-halfSize, 0, -halfSize],
+              ]}
+              color="#334155"
+              transparent
+              opacity={
+                depth === 0
+                  ? 0.45
+                  : 0.18
+              }
+              lineWidth={1}
+            />
+
+            {/* Depth label */}
+            <Html
+              position={[
+                halfSize + 0.25,
+                0,
+                halfSize,
+              ]}
+              transform
+              distanceFactor={10}
+              style={{
+                pointerEvents: "none",
+              }}
+            >
+              <div className="whitespace-nowrap font-mono text-[8px] tracking-wide text-slate-600">
+                {depth} m
+              </div>
+            </Html>
+          </group>
+        );
+      })}
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Depth ruler                                                         */}
+      {/* ------------------------------------------------------------------ */}
+
+      <Line
+        points={[
+          [
+            halfSize + 0.45,
+            0,
+            halfSize,
+          ],
+          [
+            halfSize + 0.45,
+            bottomY,
+            halfSize,
+          ],
+        ]}
+        color="#475569"
+        transparent
+        opacity={0.6}
+        lineWidth={1}
+      />
+
+      {/* Surface label */}
+      <Html
+        position={[
+          halfSize + 0.45,
+          0.18,
+          halfSize,
+        ]}
+        transform
+        distanceFactor={10}
+        style={{
+          pointerEvents: "none",
+        }}
+      >
+        <div className="whitespace-nowrap font-mono text-[8px] uppercase tracking-[0.14em] text-slate-500">
+          surface
+        </div>
+      </Html>
+
+      {/* Bottom label */}
+      <Html
+        position={[
+          halfSize + 0.45,
+          bottomY - 0.15,
+          halfSize,
+        ]}
+        transform
+        distanceFactor={10}
+        style={{
+          pointerEvents: "none",
+        }}
+      >
+        <div className="whitespace-nowrap font-mono text-[8px] uppercase tracking-[0.14em] text-slate-600">
+          {maxDepth.toFixed(0)} m
+        </div>
+      </Html>
+    </group>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* SCENE OVERLAY                                                              */
+/* -------------------------------------------------------------------------- */
+
 function SceneOverlay({
   slice,
   dataset,
@@ -130,6 +379,7 @@ function SceneOverlay({
               <div className="text-[8px] uppercase tracking-wider text-slate-600">
                 Depth
               </div>
+
               <div className="font-mono text-[10px] text-slate-300">
                 {slice.depth.toFixed(0)} m
               </div>
@@ -139,8 +389,10 @@ function SceneOverlay({
               <div className="text-[8px] uppercase tracking-wider text-slate-600">
                 Coverage
               </div>
+
               <div className="font-mono text-[10px] text-slate-300">
-                {slice.lats.length} × {slice.lons.length}
+                {slice.lats.length} ×{" "}
+                {slice.lons.length}
               </div>
             </div>
           </div>
@@ -156,9 +408,11 @@ function SceneOverlay({
           </div>
 
           <div className="mt-2 border-t border-slate-800 pt-2 font-mono text-[9px] text-slate-600">
-            {dataset.bbox.minLat.toFixed(1)}–{dataset.bbox.maxLat.toFixed(1)}
+            {dataset.bbox.minLat.toFixed(1)}–
+            {dataset.bbox.maxLat.toFixed(1)}
             °N&nbsp;&nbsp;·&nbsp;&nbsp;
-            {dataset.bbox.minLon.toFixed(1)}–{dataset.bbox.maxLon.toFixed(1)}
+            {dataset.bbox.minLon.toFixed(1)}–
+            {dataset.bbox.maxLon.toFixed(1)}
             °E
           </div>
         </div>
@@ -204,6 +458,10 @@ function SceneOverlay({
     </>
   );
 }
+
+/* -------------------------------------------------------------------------- */
+/* COORDINATE LABELS                                                          */
+/* -------------------------------------------------------------------------- */
 
 function CoordinateLabels({
   dataset,
@@ -267,6 +525,10 @@ function CoordinateLabels({
   );
 }
 
+/* -------------------------------------------------------------------------- */
+/* LOADING                                                                    */
+/* -------------------------------------------------------------------------- */
+
 function LoadingOverlay() {
   return (
     <Html
@@ -291,6 +553,10 @@ function LoadingOverlay() {
     </Html>
   );
 }
+
+/* -------------------------------------------------------------------------- */
+/* ERROR                                                                      */
+/* -------------------------------------------------------------------------- */
 
 function ErrorOverlay({
   error,
@@ -317,6 +583,10 @@ function ErrorOverlay({
   );
 }
 
+/* -------------------------------------------------------------------------- */
+/* MAIN SCENE                                                                 */
+/* -------------------------------------------------------------------------- */
+
 export function OceanScene({
   slice,
   dataset,
@@ -333,7 +603,7 @@ export function OceanScene({
   return (
     <Canvas
       camera={{
-        position: [7, 6, 9],
+        position: [8.5, 7.5, 11],
         fov: 45,
       }}
       dpr={[1, 2]}
@@ -355,6 +625,10 @@ export function OceanScene({
         intensity={0.85}
       />
 
+      {/* ------------------------------------------------------------------ */}
+      {/* Ground reference grid                                               */}
+      {/* ------------------------------------------------------------------ */}
+
       <Grid
         args={[12, 12]}
         cellSize={1}
@@ -368,7 +642,28 @@ export function OceanScene({
         infiniteGrid={false}
       />
 
+      {/* ------------------------------------------------------------------ */}
+      {/* 3D water-column context                                              */}
+      {/* ------------------------------------------------------------------ */}
+
+      {dataset && (
+        <WaterColumnContext
+          dataset={dataset}
+          verticalExaggeration={
+            verticalExaggeration
+          }
+        />
+      )}
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Coordinate axes                                                      */}
+      {/* ------------------------------------------------------------------ */}
+
       <axesHelper args={[5]} />
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Scientific model field                                               */}
+      {/* ------------------------------------------------------------------ */}
 
       {slice && (
         <OceanFieldPlane
@@ -379,6 +674,10 @@ export function OceanScene({
           }
         />
       )}
+
+      {/* ------------------------------------------------------------------ */}
+      {/* In-situ observation locations                                        */}
+      {/* ------------------------------------------------------------------ */}
 
       {dataset &&
         observations.length > 0 && (
@@ -393,21 +692,29 @@ export function OceanScene({
             }
           />
         )}
-        {dataset &&
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Selected validation profile                                          */}
+      {/* ------------------------------------------------------------------ */}
+
+      {dataset &&
         selectedObservation &&
         comparison && (
-        <ValidationProfile3D
-          observation={
-            selectedObservation
-          }
-          dataset={dataset}
-          comparison={comparison}
-          verticalExaggeration={
-            verticalExaggeration
-          }
-        />
+          <ValidationProfile3D
+            observation={
+              selectedObservation
+            }
+            dataset={dataset}
+            comparison={comparison}
+            verticalExaggeration={
+              verticalExaggeration
+            }
+          />
         )}
 
+      {/* ------------------------------------------------------------------ */}
+      {/* UI overlays                                                          */}
+      {/* ------------------------------------------------------------------ */}
 
       {slice && dataset && (
         <>
@@ -429,6 +736,10 @@ export function OceanScene({
         <ErrorOverlay error={error} />
       )}
 
+      {/* ------------------------------------------------------------------ */}
+      {/* Camera                                                               */}
+      {/* ------------------------------------------------------------------ */}
+
       <OrbitControls
         makeDefault
         minDistance={3}
@@ -436,6 +747,10 @@ export function OceanScene({
         enableDamping
         dampingFactor={0.08}
       />
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Orientation gizmo                                                    */}
+      {/* ------------------------------------------------------------------ */}
 
       <GizmoHelper
         alignment="bottom-right"

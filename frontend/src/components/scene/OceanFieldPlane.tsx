@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import * as THREE from "three";
+import { Line } from "@react-three/drei";
 import { ModelFieldSlice } from "@/lib/types";
 
 interface Props {
@@ -28,7 +29,8 @@ function oceanColor(t: number): [number, number, number] {
 
     if (value >= left.t && value <= right.t) {
       const local =
-        (value - left.t) / (right.t - left.t);
+        (value - left.t) /
+        (right.t - left.t);
 
       return [
         Math.round(
@@ -91,9 +93,11 @@ export function OceanFieldPlane({
 }: Props) {
   const { texture } = useMemo(() => {
     const nLat = slice.values.length;
-    const nLon = slice.values[0]?.length ?? 0;
+    const nLon =
+      slice.values[0]?.length ?? 0;
 
-    const [min, max] = getRange(slice);
+    const [min, max] =
+      getRange(slice);
 
     const data = new Uint8Array(
       nLat * nLon * 4,
@@ -146,12 +150,16 @@ export function OceanFieldPlane({
       );
 
     texture.needsUpdate = true;
+
     texture.magFilter =
       THREE.LinearFilter;
+
     texture.minFilter =
       THREE.LinearFilter;
+
     texture.wrapS =
       THREE.ClampToEdgeWrapping;
+
     texture.wrapT =
       THREE.ClampToEdgeWrapping;
 
@@ -163,30 +171,109 @@ export function OceanFieldPlane({
     verticalExaggeration;
 
   return (
-    <mesh
-      rotation={[
-        -Math.PI / 2,
-        0,
-        0,
-      ]}
+    <group
       position={[
         0,
         yPosition,
         0,
       ]}
     >
-      <planeGeometry
-        args={[10, 10, 1, 1]}
+      {/* ================================================================ */}
+      {/* Actual scientific model field                                    */}
+      {/* ================================================================ */}
+
+      <mesh
+        rotation={[
+          -Math.PI / 2,
+          0,
+          0,
+        ]}
+      >
+        <planeGeometry
+          args={[
+            10,
+            10,
+            1,
+            1,
+          ]}
+        />
+
+        <meshBasicMaterial
+          map={texture}
+          transparent
+          opacity={opacity}
+          side={THREE.DoubleSide}
+          depthWrite={false}
+        />
+      </mesh>
+
+      {/* ================================================================ */}
+      {/* Thin boundary around the selected depth slice                   */}
+      {/* ================================================================ */}
+
+      <Line
+        points={[
+          [-5, 0.015, -5],
+          [5, 0.015, -5],
+          [5, 0.015, 5],
+          [-5, 0.015, 5],
+          [-5, 0.015, -5],
+        ]}
+        color="#64748b"
+        transparent
+        opacity={0.7}
+        lineWidth={1}
       />
 
-      <meshBasicMaterial
-        map={texture}
+      {/* ================================================================ */}
+      {/* Selected-depth center cross                                      */}
+      {/* ================================================================ */}
+
+      <Line
+        points={[
+          [-5, 0.018, 0],
+          [5, 0.018, 0],
+        ]}
+        color="#94a3b8"
         transparent
-        opacity={opacity}
-        side={THREE.DoubleSide}
-        depthWrite={false}
+        opacity={0.18}
+        lineWidth={1}
       />
-    </mesh>
+
+      <Line
+        points={[
+          [0, 0.018, -5],
+          [0, 0.018, 5],
+        ]}
+        color="#94a3b8"
+        transparent
+        opacity={0.18}
+        lineWidth={1}
+      />
+
+      {/* ================================================================ */}
+      {/* Depth label attached directly to the field                      */}
+      {/* ================================================================ */}
+
+      <group
+        position={[
+          5.15,
+          0.08,
+          5,
+        ]}
+      >
+        <Line
+          points={[
+            [-0.15, 0, 0],
+            [0.15, 0, 0],
+          ]}
+          color="#b7f34a"
+          transparent
+          opacity={0.9}
+          lineWidth={1.5}
+        />
+      </group>
+    </group>
   );
 }
 
