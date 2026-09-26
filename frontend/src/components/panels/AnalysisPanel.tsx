@@ -22,10 +22,14 @@ interface AnalysisPanelProps {
 }
 
 function formatNumber(value: number, digits = 3) {
-  return Number.isFinite(value) ? value.toFixed(digits) : "—";
+  return Number.isFinite(value)
+    ? value.toFixed(digits)
+    : "—";
 }
 
-function formatDate(value: string | null | undefined) {
+function formatDate(
+  value: string | null | undefined,
+) {
   if (!value) return "—";
 
   const date = new Date(value);
@@ -37,8 +41,13 @@ function formatDate(value: string | null | undefined) {
   return date.toLocaleString();
 }
 
-function csvEscape(value: string | number | null | undefined) {
-  if (value === null || value === undefined) {
+function csvEscape(
+  value: string | number | null | undefined,
+) {
+  if (
+    value === null ||
+    value === undefined
+  ) {
     return "";
   }
 
@@ -49,10 +58,45 @@ function csvEscape(value: string | number | null | undefined) {
     stringValue.includes('"') ||
     stringValue.includes("\n")
   ) {
-    return `"${stringValue.replace(/"/g, '""')}"`;
+    return `"${stringValue.replace(
+      /"/g,
+      '""',
+    )}"`;
   }
 
   return stringValue;
+}
+
+function getVariableUnit(
+  dataset: DatasetMetadata | null,
+  variable: string | undefined,
+) {
+  if (!dataset || !variable) {
+    return "";
+  }
+
+  return dataset.units[variable] ?? "";
+}
+
+function variableLabel(
+  variable: string,
+) {
+  switch (variable) {
+    case "temperature":
+      return "Temperature";
+
+    case "salinity":
+      return "Salinity";
+
+    case "eastward_current":
+      return "Eastward current";
+
+    case "northward_current":
+      return "Northward current";
+
+    default:
+      return variable;
+  }
 }
 
 function exportComparisonCsv(
@@ -60,34 +104,109 @@ function exportComparisonCsv(
   observation: Observation,
   dataset: DatasetMetadata,
 ) {
-  const rows: (string | number | null | undefined)[][] = [];
+  const rows: (
+    | string
+    | number
+    | null
+    | undefined
+  )[][] = [];
 
-  rows.push(["Ocean Model–Observation Comparison"]);
-  rows.push([]);
-
-  rows.push(["Dataset", dataset.name]);
-  rows.push(["Dataset ID", dataset.id]);
-  rows.push(["Dataset Source", dataset.sourceLabel]);
-
-  rows.push(["Observation ID", observation.id]);
-  rows.push(["Platform", observation.platformType.toUpperCase()]);
-  rows.push(["Observation Latitude", observation.lat]);
-  rows.push(["Observation Longitude", observation.lon]);
-  rows.push(["Observation Time", comparison.observationTime]);
-
-  rows.push(["Model Time", comparison.modelTime]);
-  rows.push(["Time Difference (hours)", comparison.timeDifferenceHours]);
+  rows.push([
+    "Ocean Model–Observation Comparison",
+  ]);
 
   rows.push([]);
 
-  rows.push(["Metric", "Value"]);
-  rows.push(["Bias", comparison.bias]);
-  rows.push(["MAE", comparison.mae]);
-  rows.push(["RMSE", comparison.rmse]);
+  rows.push([
+    "Dataset",
+    dataset.name,
+  ]);
+
+  rows.push([
+    "Dataset ID",
+    dataset.id,
+  ]);
+
+  rows.push([
+    "Dataset Source",
+    dataset.sourceLabel,
+  ]);
+
+  rows.push([
+    "Observation ID",
+    observation.id,
+  ]);
+
+  rows.push([
+    "Platform",
+    observation.platformType.toUpperCase(),
+  ]);
+
+  rows.push([
+    "Observation Latitude",
+    observation.lat,
+  ]);
+
+  rows.push([
+    "Observation Longitude",
+    observation.lon,
+  ]);
+
+  rows.push([
+    "Observation Time",
+    comparison.observationTime,
+  ]);
+
+  rows.push([
+    "Model Time",
+    comparison.modelTime,
+  ]);
+
+  rows.push([
+    "Time Difference (hours)",
+    comparison.timeDifferenceHours,
+  ]);
+
+  rows.push([]);
+
+  rows.push([
+    "Metric",
+    "Value",
+  ]);
+
+  rows.push([
+    "Variable",
+    comparison.variable,
+  ]);
+
+  rows.push([
+    "Units",
+    getVariableUnit(
+      dataset,
+      comparison.variable,
+    ),
+  ]);
+
+  rows.push([
+    "Bias",
+    comparison.bias,
+  ]);
+
+  rows.push([
+    "MAE",
+    comparison.mae,
+  ]);
+
+  rows.push([
+    "RMSE",
+    comparison.rmse,
+  ]);
+
   rows.push([
     "Maximum Absolute Difference",
     comparison.maxAbsoluteDifference,
   ]);
+
   rows.push([
     "Depth of Maximum Difference (m)",
     comparison.maxDifferenceDepth,
@@ -99,15 +218,23 @@ function exportComparisonCsv(
     "Comparison Depth Minimum (m)",
     comparison.comparisonDepthMin,
   ]);
+
   rows.push([
     "Comparison Depth Maximum (m)",
     comparison.comparisonDepthMax,
   ]);
-  rows.push(["Valid Sample Count", comparison.validSampleCount]);
+
+  rows.push([
+    "Valid Sample Count",
+    comparison.validSampleCount,
+  ]);
 
   rows.push([]);
 
-  rows.push(["Interpolation Method", "Method"]);
+  rows.push([
+    "Interpolation Method",
+    "Method",
+  ]);
 
   rows.push([
     "Horizontal",
@@ -140,7 +267,11 @@ function exportComparisonCsv(
     comparison.difference.length,
   );
 
-  for (let index = 0; index < count; index += 1) {
+  for (
+    let index = 0;
+    index < count;
+    index += 1
+  ) {
     rows.push([
       comparison.depths[index],
       comparison.observedValues[index],
@@ -150,28 +281,41 @@ function exportComparisonCsv(
   }
 
   const csv = rows
-    .map((row) => row.map(csvEscape).join(","))
+    .map((row) =>
+      row
+        .map(csvEscape)
+        .join(","),
+    )
     .join("\r\n");
 
-  const blob = new Blob([csv], {
-    type: "text/csv;charset=utf-8;",
-  });
+  const blob = new Blob(
+    [csv],
+    {
+      type: "text/csv;charset=utf-8;",
+    },
+  );
 
-  const url = URL.createObjectURL(blob);
+  const url =
+    URL.createObjectURL(blob);
 
-  const link = document.createElement("a");
+  const link =
+    document.createElement("a");
 
   link.href = url;
 
-  const safeObservationId = observation.id.replace(
-    /[^a-zA-Z0-9-_]/g,
-    "_",
-  );
+  const safeObservationId =
+    observation.id.replace(
+      /[^a-zA-Z0-9-_]/g,
+      "_",
+    );
 
-  link.download = `ocean-comparison-${safeObservationId}.csv`;
+  link.download =
+    `ocean-comparison-${safeObservationId}.csv`;
 
   document.body.appendChild(link);
+
   link.click();
+
   document.body.removeChild(link);
 
   URL.revokeObjectURL(url);
@@ -221,7 +365,9 @@ function profilePlotData(
   return traces;
 }
 
-function differencePlotData(comparison: ModelObsComparison) {
+function differencePlotData(
+  comparison: ModelObsComparison,
+) {
   return [
     {
       x: comparison.difference,
@@ -312,7 +458,7 @@ function MethodRow({
         {label}
       </span>
 
-      <span className="text-right text-[11px] text-slate-300">
+      <span className="max-w-[65%] text-right text-[11px] text-slate-300">
         {value}
       </span>
     </div>
@@ -347,9 +493,11 @@ export function AnalysisPanel({
             </div>
 
             <div className="mt-2 text-[11px] leading-5 text-slate-600">
-              Choose an Argo or other in-situ observation from the
-              3D scene to inspect its profile and compare it against
-              the numerical model.
+              Choose an Argo or other in-situ
+              observation from the 3D scene
+              to inspect its profile and
+              compare it against the numerical
+              model.
             </div>
           </div>
         </div>
@@ -357,9 +505,29 @@ export function AnalysisPanel({
     );
   }
 
+  const comparisonUnit =
+    getVariableUnit(
+      dataset,
+      comparison?.variable,
+    );
+
+  const comparisonVariable =
+    comparison?.variable
+      ? variableLabel(
+          comparison.variable,
+        )
+      : profile?.variable
+        ? variableLabel(
+            profile.variable,
+          )
+        : "Variable";
+
   return (
     <aside className="flex h-full min-h-0 w-full flex-col border-l border-slate-800 bg-[#080d13]">
-      {/* Header */}
+      {/* ================================================================== */}
+      {/* Header                                                             */}
+      {/* ================================================================== */}
+
       <div className="shrink-0 border-b border-slate-800 px-4 py-3">
         <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
           Analysis
@@ -371,20 +539,98 @@ export function AnalysisPanel({
               Model–Observation Validation
             </div>
 
-            <div className="mt-0.5 text-[10px] text-slate-500">
+            <div className="mt-0.5 font-mono text-[10px] text-slate-500">
               {observation.id}
             </div>
           </div>
 
-          <div className="rounded border border-emerald-900/60 bg-emerald-950/30 px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-emerald-400">
-            Complete
-          </div>
+          {comparison && (
+            <div className="rounded border border-emerald-900/60 bg-emerald-950/30 px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-emerald-400">
+              Matched
+            </div>
+          )}
         </div>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="space-y-4 p-4">
-          {/* Observation */}
+
+          {/* ============================================================ */}
+          {/* Matchup summary                                               */}
+          {/* ============================================================ */}
+
+          {comparison && (
+            <section>
+              <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-500">
+                Matchup
+              </div>
+
+              <div className="rounded border border-cyan-900/40 bg-cyan-950/10 px-3 py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-[9px] uppercase tracking-[0.14em] text-slate-600">
+                      Variable
+                    </div>
+
+                    <div className="mt-1 text-sm font-semibold text-slate-100">
+                      {comparisonVariable}
+                    </div>
+                  </div>
+
+                  <div className="font-mono text-[10px] text-cyan-400">
+                    {comparisonUnit || "—"}
+                  </div>
+                </div>
+
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <div>
+                    <div className="text-[8px] uppercase tracking-wider text-slate-600">
+                      Observation
+                    </div>
+
+                    <div className="mt-1 font-mono text-[9px] text-slate-300">
+                      {formatDate(
+                        comparison.observationTime,
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="text-[8px] uppercase tracking-wider text-slate-600">
+                      Model
+                    </div>
+
+                    <div className="mt-1 font-mono text-[9px] text-slate-300">
+                      {formatDate(
+                        comparison.modelTime,
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-3 border-t border-slate-800/70 pt-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[9px] uppercase tracking-wider text-slate-600">
+                      Temporal offset
+                    </span>
+
+                    <span className="font-mono text-[10px] text-slate-300">
+                      {formatNumber(
+                        comparison.timeDifferenceHours,
+                        2,
+                      )}{" "}
+                      h
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {/* ============================================================ */}
+          {/* Observation                                                   */}
+          {/* ============================================================ */}
+
           <section>
             <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-500">
               Observation
@@ -413,21 +659,30 @@ export function AnalysisPanel({
             </div>
           </section>
 
-          {/* Loading */}
+          {/* ============================================================ */}
+          {/* Loading                                                       */}
+          {/* ============================================================ */}
+
           {loading && (
             <div className="rounded border border-slate-800 bg-slate-950/50 px-3 py-3 text-xs text-slate-500">
               Loading profile and comparison…
             </div>
           )}
 
-          {/* Error */}
+          {/* ============================================================ */}
+          {/* Error                                                         */}
+          {/* ============================================================ */}
+
           {error && (
             <div className="rounded border border-red-900/60 bg-red-950/20 px-3 py-3 text-xs leading-5 text-red-300">
               {error}
             </div>
           )}
 
-          {/* Profile */}
+          {/* ============================================================ */}
+          {/* Vertical profile                                              */}
+          {/* ============================================================ */}
+
           {profile && (
             <section>
               <div className="mb-2 flex items-center justify-between">
@@ -442,7 +697,10 @@ export function AnalysisPanel({
 
               <div className="overflow-hidden rounded border border-slate-800 bg-slate-950/40">
                 <Plot
-                  data={profilePlotData(profile, comparison)}
+                  data={profilePlotData(
+                    profile,
+                    comparison,
+                  )}
                   layout={{
                     autosize: true,
                     height: 300,
@@ -452,21 +710,26 @@ export function AnalysisPanel({
                       t: 12,
                       b: 42,
                     },
-                    paper_bgcolor: "rgba(0,0,0,0)",
-                    plot_bgcolor: "rgba(0,0,0,0)",
+                    paper_bgcolor:
+                      "rgba(0,0,0,0)",
+                    plot_bgcolor:
+                      "rgba(0,0,0,0)",
                     font: {
                       color: "#94a3b8",
                       size: 10,
                     },
                     xaxis: {
                       title: {
-                        text: profile.variable,
+                        text:
+                          comparisonVariable,
                         font: {
                           size: 10,
                         },
                       },
-                      gridcolor: "#1e293b",
-                      zerolinecolor: "#334155",
+                      gridcolor:
+                        "#1e293b",
+                      zerolinecolor:
+                        "#334155",
                     },
                     yaxis: {
                       title: {
@@ -475,9 +738,12 @@ export function AnalysisPanel({
                           size: 10,
                         },
                       },
-                      autorange: "reversed",
-                      gridcolor: "#1e293b",
-                      zerolinecolor: "#334155",
+                      autorange:
+                        "reversed",
+                      gridcolor:
+                        "#1e293b",
+                      zerolinecolor:
+                        "#334155",
                     },
                     legend: {
                       orientation: "h",
@@ -488,11 +754,13 @@ export function AnalysisPanel({
                       },
                     },
                     hoverlabel: {
-                      bgcolor: "#0f172a",
+                      bgcolor:
+                        "#0f172a",
                     },
                   }}
                   config={{
-                    displayModeBar: false,
+                    displayModeBar:
+                      false,
                     responsive: true,
                   }}
                   style={{
@@ -503,10 +771,12 @@ export function AnalysisPanel({
             </section>
           )}
 
-          {/* Comparison */}
+          {/* ============================================================ */}
+          {/* Comparison metrics                                            */}
+          {/* ============================================================ */}
+
           {comparison && (
             <>
-              {/* Error Metrics */}
               <section>
                 <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-500">
                   Error Metrics
@@ -515,25 +785,43 @@ export function AnalysisPanel({
                 <div className="grid grid-cols-3 gap-2">
                   <Metric
                     label="Bias"
-                    value={formatNumber(comparison.bias, 3)}
-                    unit="°C"
+                    value={formatNumber(
+                      comparison.bias,
+                      3,
+                    )}
+                    unit={
+                      comparisonUnit
+                    }
                   />
 
                   <Metric
                     label="MAE"
-                    value={formatNumber(comparison.mae, 3)}
-                    unit="°C"
+                    value={formatNumber(
+                      comparison.mae,
+                      3,
+                    )}
+                    unit={
+                      comparisonUnit
+                    }
                   />
 
                   <Metric
                     label="RMSE"
-                    value={formatNumber(comparison.rmse, 3)}
-                    unit="°C"
+                    value={formatNumber(
+                      comparison.rmse,
+                      3,
+                    )}
+                    unit={
+                      comparisonUnit
+                    }
                   />
                 </div>
               </section>
 
-              {/* Maximum Deviation */}
+              {/* ======================================================== */}
+              {/* Maximum deviation                                        */}
+              {/* ======================================================== */}
+
               <section>
                 <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-500">
                   Maximum Deviation
@@ -545,7 +833,7 @@ export function AnalysisPanel({
                     value={`${formatNumber(
                       comparison.maxAbsoluteDifference,
                       3,
-                    )} °C`}
+                    )} ${comparisonUnit}`}
                   />
 
                   <StatCard
@@ -558,7 +846,10 @@ export function AnalysisPanel({
                 </div>
               </section>
 
-              {/* Difference Profile */}
+              {/* ======================================================== */}
+              {/* Difference profile                                       */}
+              {/* ======================================================== */}
+
               <section>
                 <div className="mb-2 flex items-center justify-between">
                   <div className="text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-500">
@@ -572,7 +863,9 @@ export function AnalysisPanel({
 
                 <div className="overflow-hidden rounded border border-slate-800 bg-slate-950/40">
                   <Plot
-                    data={differencePlotData(comparison)}
+                    data={differencePlotData(
+                      comparison,
+                    )}
                     layout={{
                       autosize: true,
                       height: 260,
@@ -582,22 +875,26 @@ export function AnalysisPanel({
                         t: 12,
                         b: 42,
                       },
-                      paper_bgcolor: "rgba(0,0,0,0)",
-                      plot_bgcolor: "rgba(0,0,0,0)",
+                      paper_bgcolor:
+                        "rgba(0,0,0,0)",
+                      plot_bgcolor:
+                        "rgba(0,0,0,0)",
                       font: {
                         color: "#94a3b8",
                         size: 10,
                       },
                       xaxis: {
                         title: {
-                          text: "Difference",
+                          text: `Difference (${comparisonUnit})`,
                           font: {
                             size: 10,
                           },
                         },
-                        gridcolor: "#1e293b",
+                        gridcolor:
+                          "#1e293b",
                         zeroline: true,
-                        zerolinecolor: "#64748b",
+                        zerolinecolor:
+                          "#64748b",
                       },
                       yaxis: {
                         title: {
@@ -606,16 +903,21 @@ export function AnalysisPanel({
                             size: 10,
                           },
                         },
-                        autorange: "reversed",
-                        gridcolor: "#1e293b",
+                        autorange:
+                          "reversed",
+                        gridcolor:
+                          "#1e293b",
                       },
-                      showlegend: false,
+                      showlegend:
+                        false,
                       hoverlabel: {
-                        bgcolor: "#0f172a",
+                        bgcolor:
+                          "#0f172a",
                       },
                     }}
                     config={{
-                      displayModeBar: false,
+                      displayModeBar:
+                        false,
                       responsive: true,
                     }}
                     style={{
@@ -625,7 +927,10 @@ export function AnalysisPanel({
                 </div>
               </section>
 
-              {/* Temporal Alignment */}
+              {/* ======================================================== */}
+              {/* Temporal alignment                                       */}
+              {/* ======================================================== */}
+
               <section>
                 <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-500">
                   Temporal Alignment
@@ -634,12 +939,16 @@ export function AnalysisPanel({
                 <div className="rounded border border-slate-800 bg-slate-950/50 px-3">
                   <MethodRow
                     label="Observation time"
-                    value={formatDate(comparison.observationTime)}
+                    value={formatDate(
+                      comparison.observationTime,
+                    )}
                   />
 
                   <MethodRow
                     label="Model time"
-                    value={formatDate(comparison.modelTime)}
+                    value={formatDate(
+                      comparison.modelTime,
+                    )}
                   />
 
                   <MethodRow
@@ -652,7 +961,10 @@ export function AnalysisPanel({
                 </div>
               </section>
 
-              {/* Comparison Coverage */}
+              {/* ======================================================== */}
+              {/* Coverage                                                  */}
+              {/* ======================================================== */}
+
               <section>
                 <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-500">
                   Comparison Coverage
@@ -661,7 +973,9 @@ export function AnalysisPanel({
                 <div className="grid grid-cols-3 gap-2">
                   <StatCard
                     label="Valid Levels"
-                    value={String(comparison.validSampleCount)}
+                    value={String(
+                      comparison.validSampleCount,
+                    )}
                   />
 
                   <StatCard
@@ -682,7 +996,10 @@ export function AnalysisPanel({
                 </div>
               </section>
 
-              {/* Methodology */}
+              {/* ======================================================== */}
+              {/* Methodology                                               */}
+              {/* ======================================================== */}
+
               <section>
                 <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-500">
                   Interpolation & Method
@@ -691,17 +1008,28 @@ export function AnalysisPanel({
                 <div className="rounded border border-slate-800 bg-slate-950/50 px-3">
                   <MethodRow
                     label="Horizontal"
-                    value={comparison.interpolationHorizontal}
+                    value={
+                      comparison.interpolationHorizontal
+                    }
                   />
 
                   <MethodRow
                     label="Vertical"
-                    value={comparison.interpolationVertical}
+                    value={
+                      comparison.interpolationVertical
+                    }
                   />
 
                   <MethodRow
                     label="Temporal"
-                    value={comparison.interpolationTime}
+                    value={
+                      comparison.interpolationTime
+                    }
+                  />
+
+                  <MethodRow
+                    label="Difference"
+                    value="Model − Observed"
                   />
 
                   <MethodRow
@@ -711,62 +1039,93 @@ export function AnalysisPanel({
                 </div>
               </section>
 
-              {/* Provenance */}
-                <section>
-                  <div className="mb-2 flex items-center justify-between">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-500">
-                      Provenance
-                    </div>
+              {/* ======================================================== */}
+              {/* Provenance                                                */}
+              {/* ======================================================== */}
 
-                    {dataset?.dataStatus === "representative" && (
-                      <div className="rounded border border-amber-900/60 bg-amber-950/20 px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.1em] text-amber-400">
-                        Representative data
-                      </div>
-                    )}
+              <section>
+                <div className="mb-2 flex items-center justify-between">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-500">
+                    Provenance
                   </div>
 
-                  <div className="rounded border border-slate-800 bg-slate-950/50 px-3">
-                    <MethodRow
-                      label="Dataset"
-                      value={dataset?.name ?? "—"}
-                    />
-
-                    <MethodRow
-                      label="Dataset ID"
-                      value={dataset?.id ?? "—"}
-                    />
-
-                    <MethodRow
-                      label="Source"
-                      value={dataset?.sourceLabel ?? "—"}
-                    />
-
-                    <MethodRow
-                      label="Observation"
-                      value={observation.id}
-                    />
-
-                    <MethodRow
-                      label="Platform"
-                      value={observation.platformType.toUpperCase()}
-                    />
-
-                    <MethodRow
-                      label="Variable"
-                      value={comparison.variable}
-                    />
-                  </div>
-
-                  {dataset?.dataStatus === "representative" && (
-                    <div className="mt-2 rounded border border-amber-900/40 bg-amber-950/10 px-3 py-2 text-[10px] leading-4 text-amber-300/80">
-                      This deployment uses structurally representative data for
-                      demonstration and validation of the visualization workflow.
-                      Scientific conclusions should not be drawn from these values.
+                  {dataset?.dataStatus ===
+                    "representative" && (
+                    <div className="rounded border border-amber-900/60 bg-amber-950/20 px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.1em] text-amber-400">
+                      Representative data
                     </div>
                   )}
-                </section>
+                </div>
 
-              {/* Export */}
+                <div className="rounded border border-slate-800 bg-slate-950/50 px-3">
+                  <MethodRow
+                    label="Dataset"
+                    value={
+                      dataset?.name ??
+                      "—"
+                    }
+                  />
+
+                  <MethodRow
+                    label="Dataset ID"
+                    value={
+                      dataset?.id ??
+                      "—"
+                    }
+                  />
+
+                  <MethodRow
+                    label="Source"
+                    value={
+                      dataset?.sourceLabel ??
+                      "—"
+                    }
+                  />
+
+                  <MethodRow
+                    label="Observation"
+                    value={
+                      observation.id
+                    }
+                  />
+
+                  <MethodRow
+                    label="Platform"
+                    value={observation.platformType.toUpperCase()}
+                  />
+
+                  <MethodRow
+                    label="Variable"
+                    value={
+                      comparison.variable
+                    }
+                  />
+
+                  <MethodRow
+                    label="Units"
+                    value={
+                      comparisonUnit ||
+                      "—"
+                    }
+                  />
+                </div>
+
+                {dataset?.dataStatus ===
+                  "representative" && (
+                  <div className="mt-2 rounded border border-amber-900/40 bg-amber-950/10 px-3 py-2 text-[10px] leading-4 text-amber-300/80">
+                    This deployment uses structurally
+                    representative data for demonstration
+                    and validation of the visualization
+                    workflow. Scientific conclusions should
+                    not be drawn from these values.
+                  </div>
+                )}
+              </section>
+
+              {/* ======================================================== */}
+              {/* Export                                                    */}
+              {/* ======================================================== */}
+
               <section>
                 <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                   Export
@@ -786,27 +1145,35 @@ export function AnalysisPanel({
                   }}
                   className="flex w-full items-center justify-center gap-2 rounded border border-slate-700 bg-slate-900 px-3 py-2.5 text-xs font-medium text-slate-300 transition hover:border-slate-600 hover:bg-slate-800 hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  <span aria-hidden="true">↓</span>
+                  <span aria-hidden="true">
+                    ↓
+                  </span>
+
                   Export comparison CSV
                 </button>
 
                 <div className="mt-2 text-[10px] leading-4 text-slate-600">
-                  Exports observation values, interpolated model values,
-                  differences, metrics, timestamps, and interpolation
-                  methodology.
+                  Exports observation values,
+                  interpolated model values,
+                  differences, metrics, timestamps,
+                  and interpolation methodology.
                 </div>
               </section>
 
-              {/* Scientific Note */}
+              {/* ======================================================== */}
+              {/* Scientific note                                           */}
+              {/* ======================================================== */}
+
               <section className="pb-2">
                 <div className="rounded border border-slate-800 bg-slate-950/40 px-3 py-2.5 text-[10px] leading-4 text-slate-500">
                   <span className="font-medium text-slate-400">
                     Scientific note:
                   </span>{" "}
-                  Model values are interpolated to the observation
-                  location and depth levels. Error metrics are computed
-                  deterministically from valid paired samples. No LLM is
-                  used for scientific calculations.
+                  Model values are interpolated to the
+                  observation location and depth levels.
+                  Error metrics are computed deterministically
+                  from valid paired samples. No LLM is used
+                  for scientific calculations.
                 </div>
               </section>
             </>
