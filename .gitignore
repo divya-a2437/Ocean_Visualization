@@ -18,3 +18,5 @@ data/processed/
 
 # OS
 .DS_Store
+
+data/raw/
