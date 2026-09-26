@@ -1,535 +1,48 @@
 ﻿"use client";
 
+import {
+  Suspense,
+  useRef,
+  useState,
+} from "react";
+
 import { Canvas } from "@react-three/fiber";
 import {
-  GizmoHelper,
-  GizmoViewport,
-  Grid,
   Html,
-  Line,
   OrbitControls,
 } from "@react-three/drei";
 
-import {
+import type {
   DatasetMetadata,
   ModelFieldSlice,
   ModelObsComparison,
   Observation,
 } from "@/lib/types";
 
-import { OceanFieldPlane } from "./OceanFieldPlane";
-import { ObservationMarkers } from "./ObservationMarkers";
-import { ValidationProfile3D } from "./ValidationProfile3D";
 import { EarthGlobe } from "./EarthGlobe";
 import { GlobeFieldRenderer } from "./GlobeFieldRenderer";
+import { ObservationMarkers } from "./ObservationMarkers";
+import { ValidationProfile3D } from "./ValidationProfile3D";
+import {
+  GlobeCinematicController,
+  type GlobeStage,
+} from "./GlobeCinematicController";
 
-interface Props {
-  slice: ModelFieldSlice | null;
-  dataset: DatasetMetadata | null;
-  observations: Observation[];
-  selectedObservationId: string | null;
-  selectedObservation: Observation | null;
-  comparison: ModelObsComparison | null;
-  onSelectObservation: (id: string) => void;
-  opacity: number;
-  verticalExaggeration: number;
+interface OceanSceneProps {
+  dataset?: DatasetMetadata | null;
+  slice?: ModelFieldSlice | null;
+  observations?: Observation[];
+  selectedObservationId?: string | null;
+  selectedObservation?: Observation | null;
+  comparison?: ModelObsComparison | null;
   loading?: boolean;
   error?: string | null;
+  verticalExaggeration?: number;
+  onSelectObservation?: (
+    observationId: string,
+  ) => void;
+  onFieldClick?: () => void;
 }
-
-function formatTime(value: string) {
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return date
-    .toISOString()
-    .replace("T", " ")
-    .replace(".000Z", " UTC");
-}
-
-function formatNumber(value: number) {
-  if (!Number.isFinite(value)) {
-    return "—";
-  }
-
-  return value.toFixed(2);
-}
-
-function getRange(
-  slice: ModelFieldSlice,
-): [number, number] {
-  let min = Infinity;
-  let max = -Infinity;
-
-  for (const row of slice.values) {
-    for (const value of row) {
-      if (
-        value === null ||
-        !Number.isFinite(value)
-      ) {
-        continue;
-      }
-
-      min = Math.min(min, value);
-      max = Math.max(max, value);
-    }
-  }
-
-  if (
-    !Number.isFinite(min) ||
-    !Number.isFinite(max)
-  ) {
-    return [0, 1];
-  }
-
-  return [min, max];
-}
-
-/* -------------------------------------------------------------------------- */
-/* 3D WATER COLUMN CONTEXT                                                    */
-/* -------------------------------------------------------------------------- */
-
-function WaterColumnContext({
-  dataset,
-  verticalExaggeration,
-}: {
-  dataset: DatasetMetadata;
-  verticalExaggeration: number;
-}) {
-  const maxDepth =
-    Math.max(...dataset.depths);
-
-  const depthScale = verticalExaggeration / 40;
-
-  const totalHeight =
-    maxDepth * depthScale;
-
-  const bottomY = -totalHeight;
-
-  /*
-   * Keep the outer frame slightly inside the scene.
-   * The actual field remains 10 × 10.
-   */
-  const halfSize = 5;
-
-  /*
-   * Reference depths.
-   *
-   * These are visual guides only. They do not represent
-   * additional scientific model slices.
-   */
-  const guideDepths = [
-    0,
-    50,
-    100,
-    200,
-    300,
-    400,
-  ].filter(
-    (depth) => depth <= maxDepth,
-  );
-
-  return (
-    <group>
-      {/* ------------------------------------------------------------------ */}
-      {/* Vertical water-column boundary                                     */}
-      {/* ------------------------------------------------------------------ */}
-
-      <Line
-        points={[
-          [-halfSize, 0, -halfSize],
-          [-halfSize, bottomY, -halfSize],
-        ]}
-        color="#334155"
-        transparent
-        opacity={0.65}
-        lineWidth={1}
-      />
-
-      <Line
-        points={[
-          [halfSize, 0, -halfSize],
-          [halfSize, bottomY, -halfSize],
-        ]}
-        color="#334155"
-        transparent
-        opacity={0.65}
-        lineWidth={1}
-      />
-
-      <Line
-        points={[
-          [-halfSize, 0, halfSize],
-          [-halfSize, bottomY, halfSize],
-        ]}
-        color="#334155"
-        transparent
-        opacity={0.65}
-        lineWidth={1}
-      />
-
-      <Line
-        points={[
-          [halfSize, 0, halfSize],
-          [halfSize, bottomY, halfSize],
-        ]}
-        color="#334155"
-        transparent
-        opacity={0.65}
-        lineWidth={1}
-      />
-
-      {/* ------------------------------------------------------------------ */}
-      {/* Surface boundary                                                    */}
-      {/* ------------------------------------------------------------------ */}
-
-      <Line
-        points={[
-          [-halfSize, 0, -halfSize],
-          [halfSize, 0, -halfSize],
-          [halfSize, 0, halfSize],
-          [-halfSize, 0, halfSize],
-          [-halfSize, 0, -halfSize],
-        ]}
-        color="#475569"
-        transparent
-        opacity={0.75}
-        lineWidth={1}
-      />
-
-      {/* ------------------------------------------------------------------ */}
-      {/* Bottom boundary                                                     */}
-      {/* ------------------------------------------------------------------ */}
-
-      <Line
-        points={[
-          [-halfSize, bottomY, -halfSize],
-          [halfSize, bottomY, -halfSize],
-          [halfSize, bottomY, halfSize],
-          [-halfSize, bottomY, halfSize],
-          [-halfSize, bottomY, -halfSize],
-        ]}
-        color="#334155"
-        transparent
-        opacity={0.45}
-        lineWidth={1}
-      />
-
-      {/* ------------------------------------------------------------------ */}
-      {/* Horizontal depth reference planes                                   */}
-      {/* ------------------------------------------------------------------ */}
-
-      {guideDepths.map((depth) => {
-        const y =
-          -(depth * depthScale);
-
-        return (
-          <group
-            key={depth}
-            position={[0, y, 0]}
-          >
-            <Line
-              points={[
-                [-halfSize, 0, -halfSize],
-                [halfSize, 0, -halfSize],
-                [halfSize, 0, halfSize],
-                [-halfSize, 0, halfSize],
-                [-halfSize, 0, -halfSize],
-              ]}
-              color="#334155"
-              transparent
-              opacity={
-                depth === 0
-                  ? 0.45
-                  : 0.18
-              }
-              lineWidth={1}
-            />
-
-            {/* Depth label */}
-            <Html
-              position={[
-                halfSize + 0.25,
-                0,
-                halfSize,
-              ]}
-              transform
-              distanceFactor={10}
-              style={{
-                pointerEvents: "none",
-              }}
-            >
-              <div className="whitespace-nowrap font-mono text-[8px] tracking-wide text-slate-600">
-                {depth} m
-              </div>
-            </Html>
-          </group>
-        );
-      })}
-
-      {/* ------------------------------------------------------------------ */}
-      {/* Depth ruler                                                         */}
-      {/* ------------------------------------------------------------------ */}
-
-      <Line
-        points={[
-          [
-            halfSize + 0.45,
-            0,
-            halfSize,
-          ],
-          [
-            halfSize + 0.45,
-            bottomY,
-            halfSize,
-          ],
-        ]}
-        color="#475569"
-        transparent
-        opacity={0.6}
-        lineWidth={1}
-      />
-
-      {/* Surface label */}
-      <Html
-        position={[
-          halfSize + 0.45,
-          0.18,
-          halfSize,
-        ]}
-        transform
-        distanceFactor={10}
-        style={{
-          pointerEvents: "none",
-        }}
-      >
-        <div className="whitespace-nowrap font-mono text-[8px] uppercase tracking-[0.14em] text-slate-500">
-          surface
-        </div>
-      </Html>
-
-      {/* Bottom label */}
-      <Html
-        position={[
-          halfSize + 0.45,
-          bottomY - 0.15,
-          halfSize,
-        ]}
-        transform
-        distanceFactor={10}
-        style={{
-          pointerEvents: "none",
-        }}
-      >
-        <div className="whitespace-nowrap font-mono text-[8px] uppercase tracking-[0.14em] text-slate-600">
-          {maxDepth.toFixed(0)} m
-        </div>
-      </Html>
-    </group>
-  );
-}
-
-/* -------------------------------------------------------------------------- */
-/* SCENE OVERLAY                                                              */
-/* -------------------------------------------------------------------------- */
-
-function SceneOverlay({
-  slice,
-  dataset,
-  observations,
-}: {
-  slice: ModelFieldSlice;
-  dataset: DatasetMetadata;
-  observations: Observation[];
-}) {
-  const unit =
-    dataset.units[slice.variable] ?? "";
-
-  const [min, max] =
-    getRange(slice);
-
-  return (
-    <>
-      <Html
-        position={[-5.15, 0.15, -5.15]}
-        transform
-        distanceFactor={10}
-        style={{
-          pointerEvents: "none",
-        }}
-      >
-        <div className="w-[230px] rounded border border-slate-700/80 bg-slate-950/92 px-3 py-2.5 shadow-xl backdrop-blur-sm">
-          <div className="text-[9px] font-medium uppercase tracking-[0.18em] text-slate-500">
-            Ocean model field
-          </div>
-
-          <div className="mt-1 flex items-center justify-between gap-3">
-            <div className="text-xs font-semibold text-slate-100">
-              {slice.variable}
-            </div>
-
-            <div className="font-mono text-[9px] text-cyan-400">
-              {unit}
-            </div>
-          </div>
-
-          <div className="mt-2 grid grid-cols-2 gap-2">
-            <div>
-              <div className="text-[8px] uppercase tracking-wider text-slate-600">
-                Depth
-              </div>
-
-              <div className="font-mono text-[10px] text-slate-300">
-                {slice.depth.toFixed(0)} m
-              </div>
-            </div>
-
-            <div>
-              <div className="text-[8px] uppercase tracking-wider text-slate-600">
-                Coverage
-              </div>
-
-              <div className="font-mono text-[10px] text-slate-300">
-                {slice.lats.length} ×{" "}
-                {slice.lons.length}
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-2 border-t border-slate-800 pt-2">
-            <div className="text-[8px] uppercase tracking-wider text-slate-600">
-              Model time
-            </div>
-
-            <div className="font-mono text-[9px] text-slate-400">
-              {formatTime(slice.time)}
-            </div>
-          </div>
-
-          <div className="mt-2 border-t border-slate-800 pt-2 font-mono text-[9px] text-slate-600">
-            {dataset.bbox.minLat.toFixed(1)}–
-            {dataset.bbox.maxLat.toFixed(1)}
-            °N&nbsp;&nbsp;·&nbsp;&nbsp;
-            {dataset.bbox.minLon.toFixed(1)}–
-            {dataset.bbox.maxLon.toFixed(1)}
-            °E
-          </div>
-        </div>
-      </Html>
-
-      <Html
-        position={[5.05, 0.18, -5.15]}
-        transform
-        distanceFactor={10}
-        style={{
-          pointerEvents: "none",
-        }}
-      >
-        <div className="w-[145px] rounded border border-slate-700/80 bg-slate-950/92 px-2.5 py-2 shadow-xl backdrop-blur-sm">
-          <div className="mb-1.5 flex items-center justify-between gap-2">
-            <div className="text-[9px] font-medium uppercase tracking-[0.16em] text-slate-500">
-              {slice.variable}
-            </div>
-
-            <div className="font-mono text-[8px] text-slate-600">
-              {unit}
-            </div>
-          </div>
-
-          <div
-            className="h-2 w-full rounded-sm"
-            style={{
-              background:
-                "linear-gradient(90deg, rgb(7,39,78), rgb(8,91,133), rgb(0,157,166), rgb(53,178,112), rgb(191,205,66), rgb(255,224,82))",
-            }}
-          />
-
-          <div className="mt-1 flex justify-between font-mono text-[8px] text-slate-500">
-            <span>{formatNumber(min)}</span>
-            <span>{formatNumber(max)}</span>
-          </div>
-
-          <div className="mt-2 border-t border-slate-800 pt-1.5 text-[8px] text-slate-600">
-            {observations.length} in-situ observations
-          </div>
-        </div>
-      </Html>
-    </>
-  );
-}
-
-/* -------------------------------------------------------------------------- */
-/* COORDINATE LABELS                                                          */
-/* -------------------------------------------------------------------------- */
-
-function CoordinateLabels({
-  dataset,
-}: {
-  dataset: DatasetMetadata;
-}) {
-  return (
-    <>
-      <Html
-        position={[-5.05, 0.02, 0]}
-        transform
-        distanceFactor={10}
-        style={{
-          pointerEvents: "none",
-        }}
-      >
-        <span className="font-mono text-[9px] text-slate-600">
-          {dataset.bbox.maxLat}°N
-        </span>
-      </Html>
-
-      <Html
-        position={[-5.05, 0.02, 4.95]}
-        transform
-        distanceFactor={10}
-        style={{
-          pointerEvents: "none",
-        }}
-      >
-        <span className="font-mono text-[9px] text-slate-600">
-          {dataset.bbox.minLat}°N
-        </span>
-      </Html>
-
-      <Html
-        position={[-5.05, 0.02, 5.25]}
-        transform
-        distanceFactor={10}
-        style={{
-          pointerEvents: "none",
-        }}
-      >
-        <span className="font-mono text-[9px] text-slate-600">
-          {dataset.bbox.minLon}°E
-        </span>
-      </Html>
-
-      <Html
-        position={[4.35, 0.02, 5.25]}
-        transform
-        distanceFactor={10}
-        style={{
-          pointerEvents: "none",
-        }}
-      >
-        <span className="font-mono text-[9px] text-slate-600">
-          {dataset.bbox.maxLon}°E
-        </span>
-      </Html>
-    </>
-  );
-}
-
-/* -------------------------------------------------------------------------- */
-/* LOADING                                                                    */
-/* -------------------------------------------------------------------------- */
 
 function LoadingOverlay() {
   return (
@@ -539,31 +52,17 @@ function LoadingOverlay() {
         pointerEvents: "none",
       }}
     >
-      <div className="flex min-w-[170px] items-center gap-3 rounded border border-slate-700 bg-slate-950/95 px-4 py-3 shadow-2xl">
-        <div className="h-3 w-3 animate-pulse rounded-full bg-cyan-400" />
-
-        <div>
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-300">
-            Loading field
-          </div>
-
-          <div className="mt-0.5 text-[9px] text-slate-600">
-            Fetching model slice…
-          </div>
-        </div>
+      <div className="rounded-md border border-white/10 bg-black/70 px-4 py-3 text-sm text-white backdrop-blur-md">
+        Loading ocean data...
       </div>
     </Html>
   );
 }
 
-/* -------------------------------------------------------------------------- */
-/* ERROR                                                                      */
-/* -------------------------------------------------------------------------- */
-
 function ErrorOverlay({
-  error,
+  message,
 }: {
-  error: string;
+  message: string;
 }) {
   return (
     <Html
@@ -572,149 +71,104 @@ function ErrorOverlay({
         pointerEvents: "none",
       }}
     >
-      <div className="w-[250px] rounded border border-red-900/70 bg-slate-950/95 px-4 py-3 shadow-2xl">
-        <div className="text-[10px] font-semibold uppercase tracking-wider text-red-400">
-          Field unavailable
-        </div>
-
-        <div className="mt-1 text-[10px] leading-relaxed text-slate-500">
-          {error}
-        </div>
+      <div className="max-w-sm rounded-md border border-red-400/20 bg-red-950/80 px-4 py-3 text-sm text-red-100 backdrop-blur-md">
+        {message}
       </div>
     </Html>
   );
 }
 
-export function OceanScene({
-  slice,
+function SceneContents({
   dataset,
-  observations,
-  selectedObservationId,
+  slice,
+  observations = [],
+  selectedObservationId = null,
   selectedObservation,
   comparison,
+  loading,
+  error,
+  verticalExaggeration = 1,
   onSelectObservation,
-  opacity,
-  verticalExaggeration,
-  loading = false,
-  error = null,
-}: Props) {
+  onFieldClick,
+  stage,
+  onStageChange,
+  controlsRef,
+}: OceanSceneProps & {
+  stage: GlobeStage;
+  onStageChange: (
+    stage: GlobeStage,
+  ) => void;
+  controlsRef: React.RefObject<any>;
+}) {
+  const showField =
+    stage !== "intro" &&
+    !!slice;
+
+  const showObservations =
+    stage === "field" &&
+    observations.length > 0;
+
+  const handleObservationSelect = (
+    observationId: string,
+  ) => {
+    if (
+      typeof onSelectObservation ===
+      "function"
+    ) {
+      onSelectObservation(
+        observationId,
+      );
+    }
+  };
+
   return (
-    <Canvas
-      camera={{
-        position: [0, 8, 12],
-        fov: 45,
-      }}
-      dpr={[1, 2]}
-      className="bg-slate-950"
-      gl={{
-        antialias: true,
-        powerPreference: "high-performance",
-      }}
-    >
-      <color
-        attach="background"
-        args={["#050b12"]}
-      />
-
-      <ambientLight intensity={0.65} />
-
-      <directionalLight
-        position={[8, 12, 6]}
-        intensity={0.85}
-      />
-
-      {/* ------------------------------------------------------------------ */}
-      {/* Ground reference grid                                               */}
-      {/* ------------------------------------------------------------------ */}
-
-      <Grid
-        args={[12, 12]}
-        cellSize={1}
-        cellThickness={0.35}
-        cellColor="#172331"
-        sectionSize={5}
-        sectionThickness={0.7}
-        sectionColor="#26384a"
-        fadeDistance={22}
-        fadeStrength={1}
-        infiniteGrid={false}
-      />
-
-      {/* ------------------------------------------------------------------ */}
-      {/* 3D water-column context                                              */}
-      {/* ------------------------------------------------------------------ */}
-
-      {dataset && (
-        <WaterColumnContext
-          dataset={dataset}
-          verticalExaggeration={
-            verticalExaggeration
-          }
-        />
-      )}
-
-      {/* ------------------------------------------------------------------ */}
-      {/* Earth globe - new primary visualization                             */}
-      {/* ------------------------------------------------------------------ */}
-
+    <>
       <EarthGlobe radius={5} />
-      {slice && (
+
+      <GlobeCinematicController
+        stage={stage}
+        onStageChange={onStageChange}
+        controlsRef={controlsRef}
+        dataset={dataset}
+        globeRadius={5}
+      />
+
+      {showField && slice && (
         <GlobeFieldRenderer
           slice={slice}
           radius={5.025}
           opacity={0.92}
-        />
-      )}
-      {/* ------------------------------------------------------------------ */}
-      {/* Coordinate axes                                                      */}
-      {/* ------------------------------------------------------------------ */}
-
-      <axesHelper args={[5]} />
-
-      {/* ------------------------------------------------------------------ */}
-      {/* Scientific model field                                               */}
-      {/* ------------------------------------------------------------------ */}
-
-      {slice && (
-        <OceanFieldPlane
-          slice={slice}
-          opacity={opacity}
-          verticalExaggeration={
-            verticalExaggeration
+          emphasis={stage === "field"}
+          onClick={
+            stage === "region"
+              ? onFieldClick
+              : undefined
           }
         />
       )}
 
-      {/* ------------------------------------------------------------------ */}
-      {/* In-situ observation locations                                        */}
-      {/* ------------------------------------------------------------------ */}
-
-      {dataset &&
-        observations.length > 0 && (
+      {showObservations &&
+        dataset && (
           <ObservationMarkers
             observations={observations}
             dataset={dataset}
             selectedId={
-              selectedObservationId
+              selectedObservationId ?? null
             }
             onSelect={
-              onSelectObservation
+              handleObservationSelect
             }
           />
         )}
 
-      {/* ------------------------------------------------------------------ */}
-      {/* Selected validation profile                                          */}
-      {/* ------------------------------------------------------------------ */}
-
-      {dataset &&
-        selectedObservation &&
-        comparison && (
+      {selectedObservation &&
+        comparison &&
+        dataset && (
           <ValidationProfile3D
+            dataset={dataset}
             observation={
               selectedObservation
             }
-            dataset={dataset}
             comparison={comparison}
             verticalExaggeration={
               verticalExaggeration
@@ -722,59 +176,137 @@ export function OceanScene({
           />
         )}
 
-      {/* ------------------------------------------------------------------ */}
-      {/* UI overlays                                                          */}
-      {/* ------------------------------------------------------------------ */}
-
-      {slice && dataset && (
-        <>
-          <SceneOverlay
-            slice={slice}
-            dataset={dataset}
-            observations={observations}
-          />
-
-          <CoordinateLabels
-            dataset={dataset}
-          />
-        </>
-      )}
-
       {loading && <LoadingOverlay />}
 
-      {!loading && error && (
-        <ErrorOverlay error={error} />
+      {error && (
+        <ErrorOverlay message={error} />
       )}
+    </>
+  );
+}
 
-      {/* ------------------------------------------------------------------ */}
-      {/* Camera                                                               */}
-      {/* ------------------------------------------------------------------ */}
+export function OceanScene({
+  dataset,
+  slice,
+  observations = [],
+  selectedObservationId = null,
+  selectedObservation = null,
+  comparison = null,
+  loading = false,
+  error = null,
+  verticalExaggeration = 1,
+  onSelectObservation,
+  onFieldClick,
+}: OceanSceneProps) {
+  const [stage, setStage] =
+    useState<GlobeStage>("intro");
 
-      <OrbitControls
-        makeDefault
-        minDistance={3}
-        maxDistance={30}
-        enableDamping
-        dampingFactor={0.08}
-      />
+  const controlsRef =
+    useRef<any>(null);
 
-      {/* ------------------------------------------------------------------ */}
-      {/* Orientation gizmo                                                    */}
-      {/* ------------------------------------------------------------------ */}
+  const handleFieldClick = () => {
+    if (stage !== "region") {
+      return;
+    }
 
-      <GizmoHelper
-        alignment="bottom-right"
-        margin={[55, 55]}
+    if (
+      typeof onFieldClick ===
+      "function"
+    ) {
+      onFieldClick();
+    }
+
+    setStage("field");
+  };
+
+  return (
+    <div className="relative h-full w-full overflow-hidden">
+      <Canvas
+        camera={{
+          position: [
+            0,
+            7.5,
+            13.5,
+          ],
+          fov: 38,
+          near: 0.1,
+          far: 100,
+        }}
+        dpr={[1, 2]}
+        gl={{
+          antialias: true,
+          alpha: false,
+        }}
       >
-        <GizmoViewport
-          axisColors={[
-            "#ef4444",
-            "#4ade80",
-            "#38bdf8",
-          ]}
-          labelColor="#cbd5e1"
+        <color
+          attach="background"
+          args={["#050b12"]}
         />
-      </GizmoHelper>
-    </Canvas>
+
+        <ambientLight
+          intensity={1.8}
+        />
+
+        <directionalLight
+          position={[8, 10, 10]}
+          intensity={2.2}
+        />
+
+        <directionalLight
+          position={[-8, 4, -6]}
+          intensity={0.7}
+        />
+
+        <Suspense fallback={null}>
+          <SceneContents
+            dataset={dataset}
+            slice={slice}
+            observations={observations}
+            selectedObservationId={
+              selectedObservationId
+            }
+            selectedObservation={
+              selectedObservation
+            }
+            comparison={comparison}
+            loading={loading}
+            error={error}
+            verticalExaggeration={
+              verticalExaggeration
+            }
+            onSelectObservation={
+              onSelectObservation
+            }
+            onFieldClick={
+              handleFieldClick
+            }
+            stage={stage}
+            onStageChange={
+              setStage
+            }
+            controlsRef={
+              controlsRef
+            }
+          />
+        </Suspense>
+
+        <OrbitControls
+          ref={controlsRef}
+          makeDefault
+          enableDamping
+          dampingFactor={0.08}
+          enablePan={false}
+          enableZoom
+          minDistance={5.35}
+          maxDistance={25}
+          rotateSpeed={0.45}
+          zoomSpeed={0.8}
+          minPolarAngle={0.15}
+          maxPolarAngle={
+            Math.PI - 0.15
+          }
+        />
+      </Canvas>
+    </div>
   );
 }
