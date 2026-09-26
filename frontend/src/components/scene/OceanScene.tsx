@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { Canvas } from "@react-three/fiber";
 import {
@@ -20,6 +20,8 @@ import {
 import { OceanFieldPlane } from "./OceanFieldPlane";
 import { ObservationMarkers } from "./ObservationMarkers";
 import { ValidationProfile3D } from "./ValidationProfile3D";
+import { EarthGlobe } from "./EarthGlobe";
+import { GlobeFieldRenderer } from "./GlobeFieldRenderer";
 
 interface Props {
   slice: ModelFieldSlice | null;
@@ -583,10 +585,6 @@ function ErrorOverlay({
   );
 }
 
-/* -------------------------------------------------------------------------- */
-/* MAIN SCENE                                                                 */
-/* -------------------------------------------------------------------------- */
-
 export function OceanScene({
   slice,
   dataset,
@@ -603,7 +601,7 @@ export function OceanScene({
   return (
     <Canvas
       camera={{
-        position: [8.5, 7.5, 11],
+        position: [0, 8, 12],
         fov: 45,
       }}
       dpr={[1, 2]}
@@ -655,6 +653,18 @@ export function OceanScene({
         />
       )}
 
+      {/* ------------------------------------------------------------------ */}
+      {/* Earth globe - new primary visualization                             */}
+      {/* ------------------------------------------------------------------ */}
+
+      <EarthGlobe radius={5} />
+      {slice && (
+        <GlobeFieldRenderer
+          slice={slice}
+          radius={5.025}
+          opacity={0.92}
+        />
+      )}
       {/* ------------------------------------------------------------------ */}
       {/* Coordinate axes                                                      */}
       {/* ------------------------------------------------------------------ */}
