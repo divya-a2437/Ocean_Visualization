@@ -28,6 +28,20 @@ function latLonToXZ(
   return [x, z];
 }
 
+function platformStyle(platformType: Observation["platformType"]) {
+  if (platformType === "glider") {
+    return {
+      color: "#f5b94c",
+      emissive: "#9a6410",
+    };
+  }
+
+  return {
+    color: "#48c8e8",
+    emissive: "#0b6d86",
+  };
+}
+
 export function ObservationMarkers({
   observations,
   dataset,
@@ -44,18 +58,21 @@ export function ObservationMarkers({
         );
 
         const selected = observation.id === selectedId;
+        const style = platformStyle(observation.platformType);
 
         return (
           <group
             key={observation.id}
             position={[x, 0.12, z]}
           >
+            {/* Selected validation beam */}
             {selected && (
               <>
                 <mesh position={[0, 1.4, 0]}>
                   <cylinderGeometry
                     args={[0.012, 0.012, 2.8, 8]}
                   />
+
                   <meshBasicMaterial
                     color="#b7f34a"
                     transparent
@@ -65,17 +82,20 @@ export function ObservationMarkers({
 
                 <mesh position={[0, 2.8, 0]}>
                   <sphereGeometry args={[0.07, 16, 16]} />
+
                   <meshBasicMaterial color="#b7f34a" />
                 </mesh>
               </>
             )}
 
+            {/* Selection ring */}
             {selected && (
               <mesh
                 rotation={[-Math.PI / 2, 0, 0]}
                 position={[0, 0.02, 0]}
               >
                 <ringGeometry args={[0.14, 0.19, 32]} />
+
                 <meshBasicMaterial
                   color="#b7f34a"
                   transparent
@@ -85,6 +105,7 @@ export function ObservationMarkers({
               </mesh>
             )}
 
+            {/* Observation marker */}
             <mesh
               onClick={(event) => {
                 event.stopPropagation();
@@ -93,26 +114,57 @@ export function ObservationMarkers({
               scale={selected ? 1.35 : 1}
             >
               <sphereGeometry
-                args={[selected ? 0.11 : 0.065, 16, 16]}
+                args={[
+                  selected ? 0.11 : 0.065,
+                  16,
+                  16,
+                ]}
               />
 
               <meshStandardMaterial
-                color={selected ? "#d7ff63" : "#48c8e8"}
-                emissive={selected ? "#a7d92e" : "#0b6d86"}
-                emissiveIntensity={selected ? 0.7 : 0.35}
+                color={
+                  selected
+                    ? "#d7ff63"
+                    : style.color
+                }
+                emissive={
+                  selected
+                    ? "#a7d92e"
+                    : style.emissive
+                }
+                emissiveIntensity={
+                  selected ? 0.7 : 0.35
+                }
                 roughness={0.4}
                 metalness={0.1}
               />
             </mesh>
 
+            {/* Selected observation identity */}
             {selected && (
               <Html
                 distanceFactor={12}
                 position={[0.16, 0.25, 0]}
-                style={{ pointerEvents: "none" }}
+                style={{
+                  pointerEvents: "none",
+                }}
               >
                 <div className="whitespace-nowrap rounded border border-slate-600 bg-slate-950/95 px-2.5 py-1.5 shadow-lg">
-                  <div className="font-mono text-[10px] font-semibold text-slate-100">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-mono text-[9px] font-semibold uppercase tracking-[0.12em] text-lime-300">
+                      {observation.platformType}
+                    </span>
+
+                    <span className="text-[8px] text-slate-700">
+                      /
+                    </span>
+
+                    <span className="text-[8px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                      validation target
+                    </span>
+                  </div>
+
+                  <div className="mt-1 font-mono text-[10px] font-semibold text-slate-100">
                     {observation.id}
                   </div>
 
