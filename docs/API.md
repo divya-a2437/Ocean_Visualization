@@ -1,49 +1,187 @@
-# API Contract (frozen — 6 endpoints)
+# API Contract
+The MVP API contains six read-only endpoints.
 
-Base URL: `http://localhost:8000/api`. All responses JSON. See
-`docs/DATA_SCHEMA.md` for the referenced types.
+## Base URL
+Local development:
 
-## `GET /api/datasets`
-Returns: `DatasetMetadata[]`
-Purpose: list available datasets.
+```
+http://localhost:8000/api
+```
 
-## `GET /api/datasets/{datasetId}`
-Returns: `DatasetMetadata`
-Errors: `404` if `datasetId` unknown.
+Production:
 
-## `GET /api/field?datasetId=&variable=&time=&depth=`
-Returns: `ModelFieldSlice`
-Purpose: the single 2D grid the 3D scene renders.
-Errors:
-- `404` unknown `datasetId`
-- `422` `variable` not in dataset's variable list
-- `422` `time` not an exact match in dataset's `times`
-- `422` `depth` not an exact match in dataset's `depths`
+```
+https://ocean-visualization-api.onrender.com/api
+```
 
-(MVP note: `time`/`depth` require exact match against the dataset's
-published discrete values — no server-side interpolation for the field
-endpoint. The frontend only ever requests values it got from
-`DatasetMetadata`, so this is not user-facing in normal use.)
+The frontend selects the backend through `NEXT_PUBLIC_API_BASE`.
 
-## `GET /api/observations?datasetId=`
-Returns: `Observation[]`
-Errors: `404` unknown `datasetId`.
+All API responses are JSON.
 
-## `GET /api/observations/{observationId}/profile?variable=`
-Returns: `Profile`
-Errors:
-- `404` unknown `observationId`
-- `422` `variable` not available for this observation
+See `docs/DATA_SCHEMA.md` for the response structures.
 
-## `GET /api/observations/{observationId}/compare?variable=&datasetId=`
-Returns: `ModelObsComparison`
-Purpose: server computes model interpolation at the observation's
-lat/lon/time (nearest time, bilinear lat/lon, linear depth) and deterministic
-bias/MAE/RMSE against the observed profile.
-Errors:
-- `404` unknown `observationId` or `datasetId`
-- `422` `variable` not available
-- `422` observation location falls outside the dataset's bounding box
+## GET /api/datasets
+Returns the list of available datasets.
 
-No other endpoints exist for MVP. Do not add pagination, filtering, or
-write endpoints without an explicit scope decision.
+```
+DatasetMetadata[]
+```
+
+The dataset list can contain both synthetic and Copernicus datasets.
+
+Clients should use the metadata returned by the endpoint rather than assuming a fixed dataset ID.
+
+## GET /api/datasets/{datasetId}
+Returns metadata for one dataset.
+
+```
+DatasetMetadata
+```
+
+Returns `404` when the dataset does not exist.
+
+## GET /api/field
+Query parameters:
+
+```
+datasetId
+variable
+time
+depth
+```
+
+Example:
+
+```
+GET /api/field?datasetId=copernicus-demo&variable=temperature&time=2020-01-01T00:00:00Z&depth=0.494
+```
+
+Returns:
+
+```
+ModelFieldSlice
+```
+
+This endpoint returns one 2D field slice.
+
+The requested `variable`, `time` and `depth` must exist exactly in the selected dataset's metadata.
+
+The endpoint does not perform interpolation for field requests.
+
+## GET /api/observations
+Query parameter:
+
+```
+datasetId
+```
+
+Returns:
+
+```
+Observation[]
+```
+
+The Copernicus dataset currently contains no observations, so the endpoint returns an empty list for that dataset.
+
+The synthetic dataset contains the current observation profiles used by the comparison workflow.
+
+## GET /api/observations/{observationId}/profile
+Query parameter:
+
+```
+variable
+```
+
+Returns:
+
+```
+Profile
+```
+
+The endpoint searches for the observation across the available datasets.
+
+It therefore does not require a `datasetId` parameter.
+
+Returns `404` when the observation does not exist.
+
+Returns `422` when the requested variable is not available for that observation.
+
+## GET /api/observations/{observationId}/compare
+Query parameters:
+
+```
+variable
+
+```
+
+Returns:
+
+```
+ModelObsComparison
+```
+
+The endpoint compares an observation profile against the selected model dataset.
+
+The comparison process is:
+
+```
+Observation
+    |
+    +--> Observation latitude/longitude
+    |
+    +--> Observation time
+    |
+    +--> Observation depths
+		 |
+		 v
+	 Nearest model time
+		 |
+		 v
+    Bilinear lat/lon interpolation
+		 |
+		 v
+	 Linear depth interpolation
+		 |
+		 v
+	 Model-observation difference
+		 |
+		 +--> Bias
+		 +--> MAE
+		 +--> RMSE
+```
+
+The comparison convention is:
+
+```
+difference = model - observation
+```
+
+The endpoint excludes observation depths outside the model depth range.
+
+### Dataset Requirement
+The selected observation must be registered under the selected dataset.
+
+Since the Copernicus dataset currently contains no observations, the current comparison workflow operates with the synthetic dataset.
+
+### Errors
+Possible errors include:
+
+- `404`: unknown observation
+- `404`: unknown dataset
+- `422`: requested variable is unavailable
+- `422`: observation location is outside the dataset bounding box
+- `422`: no valid overlapping model and observation depths
+
+## API Scope
+The MVP API is intentionally read-only.
+
+There are currently no endpoints for:
+
+- Database writes
+- User authentication
+- Dataset uploads
+- Pagination
+- Runtime NetCDF processing
+- Runtime Copernicus downloads
+
+The API is designed around preprocessed static data.

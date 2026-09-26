@@ -1,70 +1,296 @@
-# Architecture (Locked)
+# Architecture
 
-## Data flow
+## System Overview
+The platform follows an offline preprocessing and lightweight API architecture.
 
 ```
-raw NetCDF (data/raw/)
-   │  synthetic, seeded, structurally matches Copernicus/Argo conventions
-   ▼
-source adapter (scripts/preprocess.py: VARIABLE_NAME_MAP)
-   │  thetao→temperature, so→salinity, TEMP→temperature, PSAL→salinity
-   ▼
-normalized representation (internal schema, docs/DATA_SCHEMA.md)
-   ▼
-processed flat files (data/processed/*.json)
-   │  one JSON per (variable, time, depth) slice; one JSON per observation profile
-   ▼
-FastAPI (backend/) — reads flat files, serves slices on demand, computes
-   comparison statistics (backend/app/science/)
-   ▼
-Next.js frontend — fetches via typed API client, never sees source-specific
-   variable names (thetao/so/TEMP/PSAL do not exist past preprocess.py)
-   ▼
-React Three Fiber (3D field + Argo markers) + Plotly (profile/comparison charts)
+          Source Data
+         |
+     +-------------+-------------+
+     |                           |
+     v                           v
+   Synthetic Data              Copernicus NetCDF
+     |                           |
+     |                    preprocess_copernicus.py
+     |                           |
+   preprocess.py                    |
+     |                           |
+     +-------------+-------------+
+         |
+         v
+      data/processed/
+         |
+         v
+          FastAPI
+         |
+         v
+      Next.js Frontend
+         |
+        +----------+----------+
+        |                     |
+        v                     v
+       3D Visualization       Analysis Panels
+       React Three Fiber          Plotly
 ```
 
-## Why this shape
+NetCDF processing happens offline. The API does not parse NetCDF files during requests.
 
-- **Raw NetCDF is only ever opened by `scripts/preprocess.py`, offline.**
-  The API and frontend never parse NetCDF at request time. This is what
-  makes the 4-day timeline survivable — no live parsing risk, no large
-  payloads, no per-request numerical library dependency in the hot path.
-- **The source adapter (`VARIABLE_NAME_MAP`) is the only place that knows
-  about `thetao`/`so`/`TEMP`/`PSAL`.** Swapping to real INCOIS/Copernicus
-  files later means extending this dict (and possibly adding a regridding
-  step if the real grid isn't already regular lat/lon — see "Known
-  limitation" below) — not changing the API, schemas, or frontend.
-- **One flat JSON per (variable, time, depth) slice** keeps browser payloads
-  small: the frontend requests exactly the 2D grid it's currently
-  displaying, never the full 4D cube.
+## Data Flow
+There are two preprocessing paths.
 
-## Data source status (see README.md for full detail)
+### Synthetic Workflow
 
-Live INCOIS/Copernicus/Ifremer sources are unreachable from this
-environment. We use a synthetic, seeded, structurally realistic dataset
-instead, clearly labeled everywhere (API responses include a `sourceLabel`
-field; frontend displays "Representative synthetic dataset" in the UI
-chrome). This was an explicitly pre-approved contingency, not a scope
-deviation.
+```
+Synthetic model data
+   |
+   v
+scripts/generate_sample_data.py
+   |
+   v
+scripts/preprocess.py
+   |
+   +--> Model field slices
+   |
+   +--> Observation metadata
+   |
+   +--> Observation profiles
+   |
+   v
+data/processed/
+```
 
-**Known limitation:** if real Copernicus data is substituted later, it will
-likely arrive on a regular lat/lon/z grid (as our synthetic sample already
-is), which the current adapter handles directly. Real Argo NetCDF files use
-a multi-profile format (`N_PROF` × `N_LEVELS`, one file per float or a
-merged file) similar to our synthetic Argo file — `preprocess.py`'s
-`process_observations()` already reads this shape. The main real-world
-complication not exercised here is QC-flag filtering (real Argo data
-includes quality flags per level that should be checked before trusting a
-value) — flagged as a fast-follow, not required for MVP demo credibility.
+### Copernicus Workflow
 
-## Locked decisions (unchanged from prior approval)
+```
+Copernicus Marine NetCDF
+   |
+   v
+scripts/preprocess_copernicus.py
+   |
+   +--> temperature
+   +--> salinity
+   +--> eastward_current
+   +--> northward_current
+   |
+   v
+data/processed/copernicus-bob-2020/
+```
 
-- Stack: Next.js + TypeScript + Tailwind + React Three Fiber + drei + Plotly
-  + zustand (frontend); FastAPI + xarray + NumPy + netCDF4 (backend)
-- No database, no auth, no ML, no LLM in scientific calculations, no live
-  external dependency in the demo path, no OPeNDAP/WMS/WCS
-- No volume rendering / isosurfaces unless the full MVP is stable
-- Core visualization: a depth slice rendered as a textured plane in 3D space
-- Model-vs-observation comparison is the main scientific differentiator
-- 6 frozen API endpoints (docs/API.md)
-- Comparison convention: `difference = model − observation`
+The Copernicus dataset currently contains model fields only. Its observation collection is empty.
+
+## Preprocessing Boundary
+Source-specific variable names are handled only during preprocessing.
+
+```
+Copernicus:
+
+thetao -> temperature
+so     -> salinity
+uo     -> eastward_current
+vo     -> northward_current
+```
+
+The frontend and API use the normalized internal variable names.
+
+This keeps source-specific conventions out of the visualization layer.
+
+## Processed Data Structure
+The processed data uses JSON files rather than sending complete NetCDF cubes to the browser.
+
+A source-specific dataset follows this structure:
+
+```
+data/
+└── processed/
+    └── copernicus-bob-2020/
+   ├── dataset_copernicus-bob-2020.json
+   ├── observations_copernicus-bob-2020.json
+   └── fields/
+       ├── temperature/
+       ├── salinity/
+       ├── eastward_current/
+       └── northward_current/
+```
+
+Each field directory contains JSON files for specific variable, time and depth combinations.
+
+The frontend requests only the 2D slice required by the current visualization instead of receiving the complete model cube.
+
+## Data Access Layer
+`backend/app/data_store.py` provides the API with a common data-access interface.
+
+The project currently supports two processed-data layouts.
+
+### Legacy Synthetic Layout
+
+```
+data/processed/
+├── dataset_<id>.json
+├── observations_<id>.json
+├── fields/
+│   └── <id>/
+└── profiles/
+    └── <id>/
+```
+
+### Source-Specific Layout
+
+```
+data/processed/
+└── <id>/
+    ├── dataset_<id>.json
+    ├── observations_<id>.json
+    ├── fields/
+    │   └── <variable>/
+    └── profiles/
+```
+
+`data_store.py` detects the layout from the dataset metadata and provides the same API interface for both.
+
+## Backend
+The FastAPI backend provides six API endpoints:
+
+```
+GET /api/datasets
+GET /api/datasets/{datasetId}
+GET /api/field
+GET /api/observations
+GET /api/observations/{observationId}/profile
+GET /api/observations/{observationId}/compare
+```
+
+The backend is responsible for:
+
+- Dataset discovery
+- Field retrieval
+- Observation retrieval
+- Profile retrieval
+- Model-observation interpolation
+- Comparison statistics
+
+## Scientific Comparison
+The comparison workflow is deterministic.
+
+```
+Observation profile
+   |
+   v
+Observation latitude/longitude/time
+   |
+   v
+Nearest model timestep
+   |
+   v
+Bilinear horizontal interpolation
+   |
+   v
+Linear depth interpolation
+   |
+   v
+Model values at observation depths
+   |
+   v
+Difference = model - observation
+   |
+   +--> Bias
+   +--> MAE
+   +--> RMSE
+```
+
+Depths outside the available model range are not extrapolated.
+
+Only valid overlapping depths are included in the comparison metrics.
+
+No machine learning or LLM is used for these calculations.
+
+## Frontend
+The frontend is built with Next.js, TypeScript and Tailwind CSS.
+
+React Three Fiber and Three.js handle the 3D visualization.
+
+Plotly handles profile and comparison charts.
+
+The main interaction flow is:
+
+```
+Dataset selection
+       |
+Variable selection
+       |
+Depth selection
+       |
+Time selection
+       |
+3D model field
+       |
+Observation marker
+       |
+Profile
+       |
+Model-observation comparison
+       |
+Bias / MAE / RMSE
+```
+
+## Current Visualization Approach
+The primary model visualization is a depth slice represented as a textured plane in 3D space.
+
+The 3D scene also provides spatial context for observation markers and selected profiles.
+
+The current implementation does not perform full volume rendering or isosurface extraction.
+
+## Data Source Status
+
+### Model Fields
+The project includes a real Copernicus Marine model/reanalysis subset from:
+
+`cmems_mod_glo_phy_my_0.083deg_P1D-m`
+
+The current subset is stored locally after download and preprocessing.
+
+It is not a live operational connection.
+
+### Observations
+The observation profiles currently used for model-observation comparison are synthetic representative profiles.
+
+Real Argo ingestion has not yet been implemented.
+
+The synthetic observation workflow is retained so that the comparison pipeline can be demonstrated without requiring an external observation service at runtime.
+
+## Locked Technical Decisions
+
+- Next.js App Router
+- TypeScript
+- Tailwind CSS
+- React Three Fiber
+- Three.js
+- drei
+- Plotly
+- Zustand
+- FastAPI
+- xarray
+- NumPy
+- netCDF4
+- Offline preprocessing
+- Flat JSON data delivery
+
+The current MVP does not require:
+
+- Database
+- Authentication
+- Machine learning
+- LLM-based scientific calculations
+- Runtime Copernicus requests
+- OPeNDAP
+- WMS/WCS
+- Full volume rendering
+- Isosurface rendering
+- Vector-arrow rendering
+- Glider tracks
+
+Eastward and northward current fields are available as selectable scalar fields in the current Copernicus dataset.
+
+## Known Gap
+The dataset panel in the frontend currently uses a static representative-data label rather than dynamically displaying the selected dataset's `dataStatus` and `sourceLabel`.
+
+The API already returns dataset provenance fields. The frontend wiring for displaying those fields is a remaining polish task.

@@ -1,69 +1,229 @@
-# Ocean 3D Visualization Platform (SIH 2026 — PS 26067)
+# Ocean 3D Visualization Platform
+**SIH 2026 | Problem Statement 26067**
 
-A browser-based 3D visualization platform for ocean model output and in-situ
-observations (INCOIS-style: Argo, gliders, CTDs), built as a 4-day hackathon
-prototype.
+> Develop a web-based interactive 3D visualization platform that integrates numerical ocean model outputs and in-situ observations.
+A browser-based scientific visualization platform for exploring ocean model fields and comparing them with in-situ observation profiles.
 
-## ⚠️ Data status — read this first
+**Live app:** [https://ocean-visualization.vercel.app/](https://ocean-visualization.vercel.app/)
 
-**The current demo uses a representative synthetic dataset, not live data.**
-Live INCOIS (`las.incois.gov.in`), Copernicus Marine, and Ifremer Argo GDAC
-sources are not reachable from this development environment (network/auth
-restricted). Per the approved architecture decision, we generated a small,
-seeded, structurally realistic sample instead:
+## Current Data Status
+The platform currently uses two different data sources for different purposes.
 
-- **Ocean model field**: `scripts/generate_sample_data.py` writes a synthetic
-  temperature/salinity field using the exact variable names and conventions
-  of Copernicus `GLOBAL_MULTIYEAR_PHY_001_030` (`thetao`, `so`, depth
-  positive-down, standard CF metadata). Bay of Bengal region, 8 daily time
-  steps, 8 depth levels (0–500m), 60×60 lat/lon grid.
-- **Argo-style profiles**: 18 synthetic profiles using real Argo NetCDF
-  variable naming (`TEMP`, `PSAL`, `PRES`, `LATITUDE`, `LONGITUDE`, `JULD`,
-  `PLATFORM_NUMBER`). Values are derived from the same underlying field as
-  the model data plus a small, deterministic, seeded observation-model
-  discrepancy — so model-vs-observation comparisons produce realistic,
-  reproducible, non-zero statistics.
+### Copernicus Model Data
+The platform includes a real subset of the Copernicus Marine dataset:
 
-**We have not validated this pipeline against live INCOIS or Copernicus
-data.** The ingestion pipeline (`scripts/preprocess.py`) is written against
-real-world variable-naming conventions specifically so that pointing it at
-real files later is a source-adapter change, not a redesign. See
-`ARCHITECTURE.md` for the full rationale and the two alternatives considered.
+`cmems_mod_glo_phy_my_0.083deg_P1D-m`
 
-## Repository structure
+The subset covers the Bay of Bengal region and includes:
+
+- Temperature
+- Salinity
+- Eastward current
+- Northward current
+
+The source variables are mapped during offline preprocessing:
 
 ```
-frontend/   Next.js + TypeScript + Tailwind + React Three Fiber app
-backend/    FastAPI service serving preprocessed data + comparison science
-scripts/    Offline data generation + NetCDF → JSON normalization
-data/       raw/ (source NetCDF) and processed/ (flat files the API serves)
-docs/       Data schema, API contract, development plan
+thetao -> temperature
+so     -> salinity
+uo     -> eastward_current
+vo     -> northward_current
 ```
 
-## Quick start
+The source data is downloaded as NetCDF and converted offline into JSON field slices by `scripts/preprocess_copernicus.py`.
 
-### 1. Generate and preprocess data (already done once; re-run if you change scripts)
-```bash
-cd project
-python3 scripts/generate_sample_data.py
-python3 scripts/preprocess.py
+The backend does not request Copernicus data at runtime. The deployed application therefore uses a static model/reanalysis subset, not a live Copernicus feed.
+
+### Observation Data
+The Argo-style observation profiles currently used by the comparison workflow are synthetic representative data.
+
+They are generated and preprocessed locally to exercise the observation, profile and model-observation comparison workflow.
+
+The comparison results should therefore be treated as a demonstration of the implemented analysis pipeline, not as scientific validation of the Copernicus model.
+
+The Copernicus dataset currently contains no attached observation profiles.
+
+## Core Workflow
+
+```
+Explore
+   |
+Observe
+   |
+Compare
+   |
+Quantify
+   |
+Validate
+   |
+Export
 ```
 
-### 2. Backend
-```bash
+The current implementation focuses on:
+
+- 3D visualization of model fields
+- Depth, time and variable selection
+- Argo-style observation markers
+- Observation profile visualization
+- Model-observation comparison
+- Bilinear horizontal interpolation
+- Linear depth interpolation
+- Nearest model timestep selection
+- Bias, MAE and RMSE
+- Time animation
+
+## Repository Structure
+
+```
+Ocean_Visualization/
+|
++-- frontend/                    Next.js frontend
+|
++-- backend/                     FastAPI backend
+|
++-- data/
+|   +-- processed/               Preprocessed JSON datasets
+|   +-- raw/                      Local raw NetCDF files
+|
++-- scripts/                     Offline preprocessing scripts
+|
++-- docs/                        Project documentation
+|
++-- ARCHITECTURE.md
++-- README.md
+```
+
+Raw NetCDF files are used during preprocessing and are not required by the API at request time.
+
+The backend reads preprocessed files from the repository-level `data/processed/` directory through `backend/app/data_store.py`.
+
+## Technology Stack
+
+### Frontend
+
+- Next.js
+- TypeScript
+- Tailwind CSS
+- React Three Fiber
+- Three.js
+- drei
+- Plotly
+- Zustand
+
+### Backend
+
+- Python
+- FastAPI
+- xarray
+- NumPy
+- netCDF4
+- Uvicorn
+
+### Data
+
+- NetCDF
+- Copernicus Marine model/reanalysis data
+- Preprocessed JSON field slices
+- Synthetic Argo-style observation profiles
+
+## Quick Start
+
+### 1. Generate Synthetic Data
+From the repository root:
+
+```
+python scripts/generate_sample_data.py
+python scripts/preprocess.py
+```
+
+These scripts generate the representative model and observation data used by the comparison workflow.
+
+### 2. Preprocess Copernicus Data
+After downloading the required Copernicus NetCDF subset into:
+
+```
+data/raw/copernicus_bob_2020.nc
+```
+
+run:
+
+```
+python scripts/preprocess_copernicus.py
+```
+
+The processed dataset is written under:
+
+```
+data/processed/copernicus-bob-2020/
+```
+
+The preprocessing step converts the NetCDF source into the flat JSON structure consumed by the API.
+
+### 3. Start the Backend
+
+```
 cd backend
-pip install --break-system-packages -r requirements.txt
+pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 ```
-API docs at http://localhost:8000/docs
 
-### 3. Frontend
-```bash
+API documentation:
+
+[http://localhost:8000/docs](http://localhost:8000/docs)
+
+### 4. Start the Frontend
+In another terminal:
+
+```
 cd frontend
 npm install
 npm run dev
 ```
-App at http://localhost:3000
 
-See `docs/DEVELOPMENT_PLAN.md` for the day-by-day build plan and
-`docs/API.md` / `docs/DATA_SCHEMA.md` for contracts.
+The frontend runs at:
+
+[http://localhost:3000](http://localhost:3000/)
+
+The frontend uses `NEXT_PUBLIC_API_BASE` to determine which FastAPI backend it connects to.
+
+## Deployment
+The current deployment uses:
+
+- **Frontend:** Vercel
+- **Backend:** Render
+- **Frontend API configuration:** `NEXT_PUBLIC_API_BASE`
+- **Backend CORS configuration:** `backend/app/main.py`
+
+Production frontend:
+
+[https://ocean-visualization.vercel.app/](https://ocean-visualization.vercel.app/)
+
+## Scientific Approach
+The platform does not use an LLM or machine learning model to calculate scientific results.
+
+Model-observation comparison is deterministic:
+
+```
+Observation location
+  |
+  v
+Bilinear latitude/longitude interpolation
+  |
+  v
+Nearest model timestep
+  |
+  v
+Linear depth interpolation
+  |
+  v
+Model value at observation location
+  |
+  v
+Model - observation
+  |
+  +--> Bias
+  +--> MAE
+  +--> RMSE
+```
+
+See `ARCHITECTURE.md` for the system design and `docs/API.md` and `docs/DATA_SCHEMA.md` for the API and data contracts.
