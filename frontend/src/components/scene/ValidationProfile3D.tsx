@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Html, Line } from "@react-three/drei";
 import * as THREE from "three";
 
@@ -15,6 +15,15 @@ interface Props {
   dataset: DatasetMetadata;
   comparison: ModelObsComparison;
   verticalExaggeration: number;
+}
+
+interface ProfilePoint {
+  index: number;
+  depth: number;
+  observed: number;
+  model: number;
+  difference: number;
+  y: number;
 }
 
 function differenceColor(
@@ -108,6 +117,16 @@ function projectLocation(
   return [x, z];
 }
 
+function formatValue(
+  value: number,
+): string {
+  if (!Number.isFinite(value)) {
+    return "—";
+  }
+
+  return value.toFixed(3);
+}
+
 function formatDifference(
   value: number,
 ): string {
@@ -131,12 +150,19 @@ export function ValidationProfile3D({
     dataset,
   );
 
+  const [selectedIndex, setSelectedIndex] =
+    useState<number | null>(null);
+
   const maxAbs = Math.max(
     Math.abs(
       comparison.maxAbsoluteDifference,
     ),
     0.000001,
   );
+
+  const unit =
+    dataset.units[comparison.variable] ??
+    "";
 
   /* ---------------------------------------------------------------------- */
   /* Valid comparison points                                                */
@@ -145,18 +171,29 @@ export function ValidationProfile3D({
   const validPoints = useMemo(() => {
     return comparison.depths
       .map((depth, index) => {
+        const observed =
+          comparison.observedValues[index];
+
+        const model =
+          comparison.modelValues[index];
+
         const difference =
           comparison.difference[index];
 
         if (
           !Number.isFinite(depth) ||
+          !Number.isFinite(observed) ||
+          !Number.isFinite(model) ||
           !Number.isFinite(difference)
         ) {
           return null;
         }
 
         return {
+          index,
           depth,
+          observed,
+          model,
           difference,
           y:
             -(depth / 40) *
@@ -166,11 +203,8 @@ export function ValidationProfile3D({
       .filter(
         (
           point,
-        ): point is {
-          depth: number;
-          difference: number;
-          y: number;
-        } => point !== null,
+        ): point is ProfilePoint =>
+          point !== null,
       );
   }, [
     comparison,
@@ -204,6 +238,19 @@ export function ValidationProfile3D({
       : null;
 
   /* ---------------------------------------------------------------------- */
+  /* Default selected point                                                  */
+  /* ---------------------------------------------------------------------- */
+
+  const selectedPoint =
+    selectedIndex === null
+      ? null
+      : validPoints.find(
+          (point) =>
+            point.index ===
+            selectedIndex,
+        ) ?? null;
+
+  /* ---------------------------------------------------------------------- */
   /* Depth labels                                                            */
   /* ---------------------------------------------------------------------- */
 
@@ -213,34 +260,43 @@ export function ValidationProfile3D({
     }
 
     /*
-     * Don't label every point.
-     * Use roughly 4 meaningful depth markers.
+     * Keep the vertical profile readable.
+     * Only show roughly five depth labels.
      */
-    const desiredCount = 4;
-
-    const step = Math.max(
-      1,
-      Math.floor(
-        validPoints.length /
-          desiredCount,
-      ),
-    );
-
-    const selected = validPoints.filter(
-      (_, index) =>
-        index % step === 0,
-    );
-
-    const last =
-      validPoints[
-        validPoints.length - 1
-      ];
+    const desiredCount = 5;
 
     if (
-      selected[selected.length - 1] !==
-      last
+      validPoints.length <=
+      desiredCount
     ) {
-      selected.push(last);
+      return validPoints;
+    }
+
+    const selected: ProfilePoint[] = [];
+
+    for (
+      let i = 0;
+      i < desiredCount;
+      i += 1
+    ) {
+      const ratio =
+        i /
+        (desiredCount - 1);
+
+      const index = Math.round(
+        ratio *
+          (validPoints.length - 1),
+      );
+
+      const point =
+        validPoints[index];
+
+      if (
+        point &&
+        !selected.includes(point)
+      ) {
+        selected.push(point);
+      }
     }
 
     return selected;
@@ -258,7 +314,7 @@ export function ValidationProfile3D({
           color="#e2e8f0"
           lineWidth={1.5}
           transparent
-          opacity={0.75}
+          opacity={0.7}
         />
       )}
 
@@ -286,7 +342,6 @@ export function ValidationProfile3D({
         />
       </mesh>
 
-      {/* Surface ring */}
       <mesh
         rotation={[
           -Math.PI / 2,
@@ -342,7 +397,7 @@ export function ValidationProfile3D({
 
             <Html
               position={[
-                0.22,
+                0.24,
                 0,
                 0,
               ]}
@@ -353,7 +408,7 @@ export function ValidationProfile3D({
                   "none",
               }}
             >
-              <span className="whitespace-nowrap font-mono text-[8px] text-slate-600">
+              <span className="whitespace-nowrap font-mono text-[8px] text-slate-500">
                 {point.depth.toFixed(
                   0,
                 )}{" "}
@@ -365,86 +420,233 @@ export function ValidationProfile3D({
       )}
 
       {/* ================================================================== */}
-      {/* Model-observation difference points                                */}
+      {/* Profile measurement points                                        */}
       {/* ================================================================== */}
 
       {validPoints.map(
-        (point) => (
-          <group
-            key={`${point.depth}-${point.difference}`}
-            position={[
-              x,
-              point.y,
-              z,
-            ]}
-          >
-            <mesh>
-              <sphereGeometry
-                args={[
-                  0.105,
-                  16,
-                  16,
-                ]}
-              />
+        (point) => {
+          const selected =
+            selectedIndex ===
+            point.index;
 
-              <meshBasicMaterial
-                color={differenceColor(
-                  point.difference,
-                  maxAbs,
-                )}
-              />
-            </mesh>
+          const pointColor =
+            differenceColor(
+              point.difference,
+              maxAbs,
+            );
 
-            {/* Small horizontal difference tick */}
-            <Line
-              points={[
-                [-0.18, 0, 0],
-                [0.18, 0, 0],
+          return (
+            <group
+              key={`${point.index}-${point.depth}`}
+              position={[
+                x,
+                point.y,
+                z,
               ]}
-              color={differenceColor(
-                point.difference,
-                maxAbs,
-              )}
-              transparent
-              opacity={0.45}
-              lineWidth={1}
-            />
-
-            {/* Keep detailed value available on hover/click-like proximity */}
-            <Html
-              distanceFactor={7}
-              style={{
-                pointerEvents:
-                  "none",
-              }}
             >
-              <div className="rounded border border-slate-700/80 bg-slate-950/95 px-2 py-1 shadow-lg">
-                <div className="font-mono text-[8px] text-slate-500">
-                  {point.depth.toFixed(
-                    0,
+              {/* Selected halo */}
+              {selected && (
+                <mesh>
+                  <sphereGeometry
+                    args={[
+                      0.18,
+                      20,
+                      20,
+                    ]}
+                  />
+
+                  <meshBasicMaterial
+                    color="#ffffff"
+                    transparent
+                    opacity={0.18}
+                  />
+                </mesh>
+              )}
+
+              {/* Measurement point */}
+              <mesh
+                onClick={(event) => {
+                  event.stopPropagation();
+
+                  setSelectedIndex(
+                    point.index,
+                  );
+                }}
+              >
+                <sphereGeometry
+                  args={[
+                    selected
+                      ? 0.13
+                      : 0.075,
+                    16,
+                    16,
+                  ]}
+                />
+
+                <meshBasicMaterial
+                  color={
+                    selected
+                      ? "#ffffff"
+                      : pointColor
+                  }
+                />
+              </mesh>
+
+              {/* Difference direction tick */}
+              <Line
+                points={[
+                  [-0.16, 0, 0],
+                  [0.16, 0, 0],
+                ]}
+                color={pointColor}
+                transparent
+                opacity={
+                  selected
+                    ? 0.9
+                    : 0.38
+                }
+                lineWidth={
+                  selected
+                    ? 1.5
+                    : 0.8
+                }
+              />
+            </group>
+          );
+        },
+      )}
+
+      {/* ================================================================== */}
+      {/* Selected depth information card                                   */}
+      {/* ================================================================== */}
+
+      {selectedPoint && (
+        <Html
+          position={[
+            x + 0.42,
+            selectedPoint.y,
+            z,
+          ]}
+          distanceFactor={8}
+          style={{
+            pointerEvents:
+              "auto",
+          }}
+        >
+          <div className="w-[168px] rounded-md border border-slate-700/90 bg-slate-950/95 px-3 py-2.5 shadow-2xl backdrop-blur-md">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-[8px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                  Depth sample
+                </div>
+
+                <div className="mt-0.5 font-mono text-[12px] font-semibold text-slate-100">
+                  {selectedPoint.depth.toFixed(
+                    1,
                   )}{" "}
                   m
                 </div>
+              </div>
 
-                <div
-                  className="font-mono text-[9px] font-semibold"
+              <button
+                type="button"
+                onClick={() =>
+                  setSelectedIndex(
+                    null,
+                  )
+                }
+                className="flex h-6 w-6 items-center justify-center rounded border border-slate-800 text-[11px] text-slate-500 transition hover:border-slate-600 hover:text-slate-200"
+                aria-label="Close depth details"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="my-2 border-t border-slate-800" />
+
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[8px] uppercase tracking-wider text-slate-600">
+                  Observed
+                </span>
+
+                <span className="font-mono text-[10px] font-semibold text-cyan-300">
+                  {formatValue(
+                    selectedPoint.observed,
+                  )}{" "}
+                  {unit}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[8px] uppercase tracking-wider text-slate-600">
+                  Model
+                </span>
+
+                <span className="font-mono text-[10px] font-semibold text-amber-300">
+                  {formatValue(
+                    selectedPoint.model,
+                  )}{" "}
+                  {unit}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[8px] uppercase tracking-wider text-slate-600">
+                  Difference
+                </span>
+
+                <span
+                  className="font-mono text-[10px] font-semibold"
                   style={{
                     color:
                       differenceColor(
-                        point.difference,
+                        selectedPoint.difference,
                         maxAbs,
                       ),
                   }}
                 >
                   {formatDifference(
-                    point.difference,
-                  )}
-                </div>
+                    selectedPoint.difference,
+                  )}{" "}
+                  {unit}
+                </span>
               </div>
-            </Html>
-          </group>
-        ),
+            </div>
+          </div>
+        </Html>
       )}
+
+      {/* ================================================================== */}
+      {/* Interaction hint                                                   */}
+      {/* ================================================================== */}
+
+      {!selectedPoint &&
+        validPoints.length > 0 && (
+          <Html
+            position={[
+              x + 0.28,
+              validPoints[
+                Math.floor(
+                  validPoints.length /
+                    2,
+                )
+              ]?.y ?? -1,
+              z,
+            ]}
+            distanceFactor={11}
+            style={{
+              pointerEvents:
+                "none",
+            }}
+          >
+            <div className="whitespace-nowrap rounded border border-slate-800/80 bg-slate-950/80 px-2 py-1 backdrop-blur-sm">
+              <span className="font-mono text-[8px] uppercase tracking-[0.12em] text-slate-600">
+                Click a depth point
+              </span>
+            </div>
+          </Html>
+        )}
 
       {/* ================================================================== */}
       {/* Deepest comparison anchor                                          */}
@@ -460,7 +662,7 @@ export function ValidationProfile3D({
         >
           <sphereGeometry
             args={[
-              0.14,
+              0.11,
               16,
               16,
             ]}
@@ -487,10 +689,11 @@ export function ValidationProfile3D({
         ]}
         distanceFactor={9}
         style={{
-          pointerEvents: "none",
+          pointerEvents:
+            "none",
         }}
       >
-        <div className="rounded border border-slate-700 bg-slate-950/95 px-2.5 py-1.5 shadow-xl">
+        <div className="rounded-md border border-slate-700 bg-slate-950/95 px-2.5 py-1.5 shadow-xl backdrop-blur-md">
           <div className="flex items-center gap-2">
             <span className="h-1.5 w-1.5 rounded-full bg-lime-300" />
 
