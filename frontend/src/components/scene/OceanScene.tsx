@@ -22,7 +22,6 @@ import type {
 import { EarthGlobe } from "./EarthGlobe";
 import { GlobeFieldRenderer } from "./GlobeFieldRenderer";
 import { ObservationMarkers } from "./ObservationMarkers";
-import { ValidationProfile3D } from "./ValidationProfile3D";
 
 import {
   GlobeCinematicController,
@@ -102,11 +101,8 @@ function SceneContents({
   slice,
   observations = [],
   selectedObservationId = null,
-  selectedObservation = null,
-  comparison = null,
   loading = false,
   error = null,
-  verticalExaggeration = 1,
   opacity = 0.95,
   onSelectObservation,
   onFieldClick,
@@ -114,21 +110,6 @@ function SceneContents({
   onStageChange,
   controlsRef,
 }: SceneContentsProps) {
-  /*
-   * ---------------------------------------
-   * FIELD VISIBILITY
-   * ---------------------------------------
-   *
-   * During intro:
-   *   Earth only
-   *
-   * During region:
-   *   Earth + scientific patch
-   *
-   * During field:
-   *   Earth + scientific patch + ARGO
-   */
-
   const showField =
     stage !== "intro" &&
     !!slice;
@@ -147,15 +128,15 @@ function SceneContents({
 
   return (
     <>
-      {/* -------------------------------- */}
-      {/* REAL COLOURED EARTH              */}
-      {/* -------------------------------- */}
+      {/* ================================================================ */}
+      {/* Global Earth                                                     */}
+      {/* ================================================================ */}
 
       <EarthGlobe radius={5} />
 
-      {/* -------------------------------- */}
-      {/* GEOGRAPHIC CAMERA                */}
-      {/* -------------------------------- */}
+      {/* ================================================================ */}
+      {/* Geographic cinematic controller                                  */}
+      {/* ================================================================ */}
 
       <GlobeCinematicController
         stage={stage}
@@ -165,30 +146,27 @@ function SceneContents({
         globeRadius={5}
       />
 
-      {/* -------------------------------- */}
-      {/* SCIENTIFIC MODEL FIELD           */}
-      {/* -------------------------------- */}
+      {/* ================================================================ */}
+      {/* Ocean model field                                                */}
+      {/* ================================================================ */}
 
-      {showField &&
-        slice && (
-          <GlobeFieldRenderer
-            slice={slice}
-            radius={5.025}
-            opacity={opacity}
-            emphasis={
-              stage === "field"
-            }
-            onClick={
-              stage === "region"
-                ? onFieldClick
-                : undefined
-            }
-          />
-        )}
+      {showField && slice && (
+        <GlobeFieldRenderer
+          slice={slice}
+          radius={5.025}
+          opacity={opacity}
+          emphasis={stage === "field"}
+          onClick={
+            stage === "region"
+              ? onFieldClick
+              : undefined
+          }
+        />
+      )}
 
-      {/* -------------------------------- */}
-      {/* REAL CORA / ARGO OBSERVATIONS    */}
-      {/* -------------------------------- */}
+      {/* ================================================================ */}
+      {/* ARGO / in-situ observations                                      */}
+      {/* ================================================================ */}
 
       {showObservations &&
         dataset && (
@@ -204,37 +182,14 @@ function SceneContents({
           />
         )}
 
-      {/* -------------------------------- */}
-      {/* SELECTED PROFILE                 */}
-      {/* -------------------------------- */}
+      {/* ================================================================ */}
+      {/* Loading / error state                                            */}
+      {/* ================================================================ */}
 
-      {selectedObservation &&
-        comparison &&
-        dataset && (
-          <ValidationProfile3D
-            dataset={dataset}
-            observation={
-              selectedObservation
-            }
-            comparison={comparison}
-            verticalExaggeration={
-              verticalExaggeration
-            }
-          />
-        )}
-
-      {/* -------------------------------- */}
-      {/* LOADING / ERROR                  */}
-      {/* -------------------------------- */}
-
-      {loading && (
-        <LoadingOverlay />
-      )}
+      {loading && <LoadingOverlay />}
 
       {error && (
-        <ErrorOverlay
-          message={error}
-        />
+        <ErrorOverlay message={error} />
       )}
     </>
   );
@@ -259,32 +214,6 @@ export function OceanScene({
 
   const controlsRef =
     useRef<any>(null);
-
-  /*
-   * ---------------------------------------
-   * FIELD CLICK
-   * ---------------------------------------
-   *
-   * Region stage:
-   *
-   *   user clicks scientific patch
-   *
-   *             ↓
-   *
-   *   parent opens MiniOceanExplorer
-   *
-   *             ↓
-   *
-   *   scene enters field stage
-   *
-   *             ↓
-   *
-   *   camera dives geographically
-   *
-   *             ↓
-   *
-   *   ARGO markers become visible
-   */
 
   const handleFieldClick = () => {
     if (stage !== "region") {
@@ -320,29 +249,17 @@ export function OceanScene({
           args={["#050b12"]}
         />
 
-        {/* -------------------------------- */}
-        {/* EARTH LIGHTING                   */}
-        {/* -------------------------------- */}
-
         <ambientLight
           intensity={1.8}
         />
 
         <directionalLight
-          position={[
-            8,
-            10,
-            10,
-          ]}
+          position={[8, 10, 10]}
           intensity={2.2}
         />
 
         <directionalLight
-          position={[
-            -8,
-            4,
-            -6,
-          ]}
+          position={[-8, 4, -6]}
           intensity={0.7}
         />
 
@@ -350,18 +267,14 @@ export function OceanScene({
           <SceneContents
             dataset={dataset}
             slice={slice}
-            observations={
-              observations
-            }
+            observations={observations}
             selectedObservationId={
               selectedObservationId
             }
             selectedObservation={
               selectedObservation
             }
-            comparison={
-              comparison
-            }
+            comparison={comparison}
             loading={loading}
             error={error}
             verticalExaggeration={
@@ -383,10 +296,6 @@ export function OceanScene({
             }
           />
         </Suspense>
-
-        {/* -------------------------------- */}
-        {/* USER NAVIGATION                  */}
-        {/* -------------------------------- */}
 
         <OrbitControls
           ref={controlsRef}
