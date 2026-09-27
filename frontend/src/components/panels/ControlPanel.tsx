@@ -134,13 +134,14 @@ export function ControlPanel({
           </div>
         )}
 
-        <div className="mt-2 flex items-center gap-2">
-          <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
-
-          <span className="text-[9px] uppercase tracking-wider text-amber-500">
-            Representative synthetic dataset
-          </span>
-        </div>
+        {dataset.id === "copernicus-bob-2020" ? (
+          <div className="mt-2 flex items-center gap-2">
+            <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" />
+            <span className="text-[9px] uppercase tracking-wider text-cyan-500">
+              Copernicus Marine · GLORYS12V1
+            </span>
+          </div>
+        ) : null}
       </Section>
 
       {/* Variable */}
