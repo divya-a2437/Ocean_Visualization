@@ -9,17 +9,19 @@ interface Props {
   dataset: DatasetMetadata;
   selectedId: string | null;
   onSelect: (id: string) => void;
+  radius?: number;
 }
-
-const GLOBE_RADIUS = 5.085;
 
 function latLonToGlobe(
   lat: number,
   lon: number,
   radius: number,
 ): THREE.Vector3 {
-  const latRad = THREE.MathUtils.degToRad(lat);
-  const lonRad = THREE.MathUtils.degToRad(lon);
+  const latRad =
+    THREE.MathUtils.degToRad(lat);
+
+  const lonRad =
+    THREE.MathUtils.degToRad(lon);
 
   const cosLat = Math.cos(latRad);
 
@@ -56,6 +58,7 @@ export function ObservationMarkers({
   dataset,
   selectedId,
   onSelect,
+  radius = 5.085,
 }: Props) {
   return (
     <group>
@@ -64,19 +67,12 @@ export function ObservationMarkers({
           latLonToGlobe(
             observation.lat,
             observation.lon,
-            GLOBE_RADIUS,
+            radius,
           );
 
         const normal =
           position.clone().normalize();
 
-        /*
-         * The marker group is oriented so its local Y axis
-         * points away from the centre of the Earth.
-         *
-         * This lets the selection beam and ring sit naturally
-         * on the curved globe surface.
-         */
         const orientation =
           new THREE.Quaternion();
 
@@ -99,21 +95,20 @@ export function ObservationMarkers({
             position={position}
             quaternion={orientation}
           >
-            {/* Selected observation beam */}
             {selected && (
               <>
                 <mesh
                   position={[
                     0,
-                    0.75,
+                    radius * 0.15,
                     0,
                   ]}
                 >
                   <cylinderGeometry
                     args={[
-                      0.012,
-                      0.012,
-                      1.5,
+                      radius * 0.0024,
+                      radius * 0.0024,
+                      radius * 0.3,
                       8,
                     ]}
                   />
@@ -128,13 +123,13 @@ export function ObservationMarkers({
                 <mesh
                   position={[
                     0,
-                    1.52,
+                    radius * 0.305,
                     0,
                   ]}
                 >
                   <sphereGeometry
                     args={[
-                      0.075,
+                      radius * 0.015,
                       16,
                       16,
                     ]}
@@ -147,7 +142,6 @@ export function ObservationMarkers({
               </>
             )}
 
-            {/* Selection ring */}
             {selected && (
               <mesh
                 rotation={[
@@ -157,14 +151,14 @@ export function ObservationMarkers({
                 ]}
                 position={[
                   0,
-                  0.025,
+                  radius * 0.005,
                   0,
                 ]}
               >
                 <ringGeometry
                   args={[
-                    0.13,
-                    0.19,
+                    radius * 0.025,
+                    radius * 0.038,
                     32,
                   ]}
                 />
@@ -178,10 +172,10 @@ export function ObservationMarkers({
               </mesh>
             )}
 
-            {/* Observation marker */}
             <mesh
               onClick={(event) => {
                 event.stopPropagation();
+
                 onSelect(
                   observation.id,
                 );
@@ -195,8 +189,8 @@ export function ObservationMarkers({
               <sphereGeometry
                 args={[
                   selected
-                    ? 0.115
-                    : 0.075,
+                    ? radius * 0.023
+                    : radius * 0.015,
                   16,
                   16,
                 ]}
@@ -223,13 +217,14 @@ export function ObservationMarkers({
               />
             </mesh>
 
-            {/* Selected observation information */}
             {selected && (
               <Html
-                distanceFactor={12}
+                distanceFactor={
+                  radius * 2.4
+                }
                 position={[
-                  0.18,
-                  0.25,
+                  radius * 0.035,
+                  radius * 0.05,
                   0,
                 ]}
                 style={{
@@ -237,7 +232,7 @@ export function ObservationMarkers({
                     "none",
                 }}
               >
-                <div className="whitespace-nowrap rounded border border-slate-600 bg-slate-950/95 px-2.5 py-1.5 shadow-lg">
+                <div className="whitespace-nowrap border border-slate-600 bg-slate-950/95 px-2.5 py-1.5 shadow-lg">
                   <div className="flex items-center gap-1.5">
                     <span className="font-mono text-[9px] font-semibold uppercase tracking-[0.12em] text-lime-300">
                       {
@@ -259,9 +254,13 @@ export function ObservationMarkers({
                   </div>
 
                   <div className="mt-0.5 text-[9px] text-slate-500">
-                    {observation.lat.toFixed(2)}
+                    {observation.lat.toFixed(
+                      2,
+                    )}
                     °N ·{" "}
-                    {observation.lon.toFixed(2)}
+                    {observation.lon.toFixed(
+                      2,
+                    )}
                     °E
                   </div>
                 </div>

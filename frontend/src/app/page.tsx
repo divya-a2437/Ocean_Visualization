@@ -8,6 +8,7 @@ import { useAppStore } from "@/store/useAppStore";
 import { OceanScene } from "@/components/scene/OceanScene";
 import { ControlPanel } from "@/components/panels/ControlPanel";
 import { AnalysisPanel } from "@/components/panels/AnalysisPanel";
+import { MiniOceanExplorer } from "@/components/panels/MiniOceanExplorer";
 
 import {
   ModelFieldSlice,
@@ -35,8 +36,8 @@ export default function Home() {
     datasets,
     activeDatasetId,
     variable,
-    depthIndex,
     timeIndex,
+    depthIndex,
     isPlaying,
     opacity,
     verticalExaggeration,
@@ -46,8 +47,8 @@ export default function Home() {
     setDatasets,
     setActiveDataset,
     setVariable,
-    setDepthIndex,
     setTimeIndex,
+    setDepthIndex,
     togglePlaying,
     setOpacity,
     setVerticalExaggeration,
@@ -56,9 +57,7 @@ export default function Home() {
   } = useAppStore();
 
   const [slice, setSlice] =
-    useState<ModelFieldSlice | null>(
-      null,
-    );
+    useState<ModelFieldSlice | null>(null);
 
   const [sliceLoading, setSliceLoading] =
     useState(false);
@@ -70,9 +69,7 @@ export default function Home() {
     useState<Profile | null>(null);
 
   const [comparison, setComparison] =
-    useState<ModelObsComparison | null>(
-      null,
-    );
+    useState<ModelObsComparison | null>(null);
 
   const [analysisLoading, setAnalysisLoading] =
     useState(false);
@@ -80,14 +77,15 @@ export default function Home() {
   const [analysisError, setAnalysisError] =
     useState<string | null>(null);
 
+  const [miniExplorerOpen, setMiniExplorerOpen] =
+    useState(false);
+
   const activeDataset =
     datasets.find(
-      (d) => d.id === activeDatasetId,
+      (dataset) =>
+        dataset.id === activeDatasetId,
     ) ?? null;
 
-  /*
-   * Dataset bootstrap
-   */
   useEffect(() => {
     let cancelled = false;
 
@@ -122,10 +120,6 @@ export default function Home() {
     activeDatasetId,
   ]);
 
-  /*
-   * Reset variable/depth/time when switching
-   * to another dataset.
-   */
   useEffect(() => {
     if (!activeDataset) return;
 
@@ -165,9 +159,6 @@ export default function Home() {
     setVariable,
   ]);
 
-  /*
-   * Observation loading
-   */
   useEffect(() => {
     if (!activeDataset) return;
 
@@ -199,9 +190,6 @@ export default function Home() {
     setObservations,
   ]);
 
-  /*
-   * Field slice loading
-   */
   useEffect(() => {
     if (!activeDataset) return;
 
@@ -259,9 +247,6 @@ export default function Home() {
     depthIndex,
   ]);
 
-  /*
-   * Time animation
-   */
   useEffect(() => {
     if (
       !isPlaying ||
@@ -296,9 +281,6 @@ export default function Home() {
     setTimeIndex,
   ]);
 
-  /*
-   * Observation analysis
-   */
   useEffect(() => {
     if (
       !selectedObservationId ||
@@ -370,8 +352,8 @@ export default function Home() {
 
   const selectedObservation =
     observations.find(
-      (o) =>
-        o.id ===
+      (observation) =>
+        observation.id ===
         selectedObservationId,
     ) ?? null;
 
@@ -385,27 +367,50 @@ export default function Home() {
       depthIndex
     ];
 
+  const handleExplore = () => {
+    if (!activeDataset) {
+      return;
+    }
+
+    setMiniExplorerOpen(true);
+  };
+
+  const handleCloseExplorer = () => {
+    setMiniExplorerOpen(false);
+  };
+
+  const handleBackToRegion = () => {
+    setMiniExplorerOpen(false);
+
+    selectObservation(null);
+    setProfile(null);
+    setComparison(null);
+    setAnalysisError(null);
+  };
+
+  const handleOpenFullAnalysis = () => {
+    setMiniExplorerOpen(false);
+  };
+
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-slate-950 text-slate-100">
       {/* Header */}
       <header className="flex h-14 shrink-0 items-center justify-between border-b border-slate-800 bg-slate-950 px-5">
-        <div className="flex items-center gap-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-sm font-semibold tracking-tight text-slate-100">
-                Ocean 3D
-              </h1>
+        <div>
+          <div className="flex items-center gap-2">
+            <h1 className="text-sm font-semibold tracking-tight text-slate-100">
+              Ocean 3D
+            </h1>
 
-              <span className="rounded border border-slate-800 bg-slate-900 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wider text-slate-500">
-                SIH 26067
-              </span>
-            </div>
-
-            <p className="mt-0.5 text-[9px] text-slate-600">
-              Interactive ocean model &
-              observation workspace
-            </p>
+            <span className="rounded border border-slate-800 bg-slate-900 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wider text-slate-500">
+              SIH 26067
+            </span>
           </div>
+
+          <p className="mt-0.5 text-[9px] text-slate-600">
+            Interactive ocean model &
+            observation workspace
+          </p>
         </div>
 
         <div className="flex items-center gap-4">
@@ -434,60 +439,58 @@ export default function Home() {
 
       {/* Workspace */}
       <div className="flex min-h-0 flex-1 overflow-hidden">
-        {/* Controls */}
-        <aside className="w-72 shrink-0 border-r border-slate-800 bg-slate-950">
-          <ControlPanel
-            dataset={activeDataset}
-            datasets={datasets}
-            variable={variable}
-            depthIndex={depthIndex}
-            timeIndex={timeIndex}
-            isPlaying={isPlaying}
-            opacity={opacity}
-            verticalExaggeration={
-              verticalExaggeration
-            }
-            onDatasetChange={
-              setActiveDataset
-            }
-            onVariableChange={
-              setVariable
-            }
-            onDepthIndexChange={
-              setDepthIndex
-            }
-            onTimeIndexChange={
-              setTimeIndex
-            }
-            onTogglePlay={
-              togglePlaying
-            }
-            onOpacityChange={
-              setOpacity
-            }
-            onExaggerationChange={
-              setVerticalExaggeration
-            }
-          />
-        </aside>
+        {/* LEFT CONTROL PANEL */}
+        {!miniExplorerOpen && (
+          <aside className="w-72 shrink-0 border-r border-slate-800 bg-slate-950">
+            <ControlPanel
+              dataset={activeDataset}
+              datasets={datasets}
+              variable={variable}
+              depthIndex={depthIndex}
+              timeIndex={timeIndex}
+              isPlaying={isPlaying}
+              opacity={opacity}
+              verticalExaggeration={
+                verticalExaggeration
+              }
+              onDatasetChange={
+                setActiveDataset
+              }
+              onVariableChange={
+                setVariable
+              }
+              onDepthIndexChange={
+                setDepthIndex
+              }
+              onTimeIndexChange={
+                setTimeIndex
+              }
+              onTogglePlay={
+                togglePlaying
+              }
+              onOpacityChange={
+                setOpacity
+              }
+              onExaggerationChange={
+                setVerticalExaggeration
+              }
+            />
+          </aside>
+        )}
 
         {/* 3D viewport */}
         <main className="relative min-w-0 flex-1 bg-slate-950">
           <OceanScene
             slice={slice}
             dataset={activeDataset}
-            observations={
-              observations
-            }
+            observations={observations}
             selectedObservationId={
               selectedObservationId
             }
             selectedObservation={
               selectedObservation
             }
-            comparison={
-              comparison
-            }
+            comparison={comparison}
             onSelectObservation={
               selectObservation
             }
@@ -497,63 +500,114 @@ export default function Home() {
             }
             loading={sliceLoading}
             error={sliceError}
+            onFieldClick={
+              handleExplore
+            }
           />
 
-          {/* Bottom viewport status */}
-          {activeDataset && (
-            <div className="pointer-events-none absolute bottom-3 left-3 right-3 flex items-end justify-between">
-              <div className="rounded border border-slate-800 bg-slate-950/85 px-3 py-2 backdrop-blur-sm">
-                <div className="text-[8px] uppercase tracking-[0.16em] text-slate-600">
-                  Active field
+          {/* Bottom status */}
+          {!miniExplorerOpen &&
+            activeDataset && (
+              <div className="pointer-events-none absolute bottom-3 left-3 right-3 flex items-end justify-between">
+                <div className="rounded border border-slate-800 bg-slate-950/85 px-3 py-2 backdrop-blur-sm">
+                  <div className="text-[8px] uppercase tracking-[0.16em] text-slate-600">
+                    Active field
+                  </div>
+
+                  <div className="mt-0.5 font-mono text-[10px] text-slate-300">
+                    {variable}
+                    {activeDataset.units[
+                      variable
+                    ]
+                      ? ` · ${activeDataset.units[variable]}`
+                      : ""}
+                    {" · "}
+                    {currentDepth ?? "—"} m
+                  </div>
                 </div>
 
-                <div className="mt-0.5 font-mono text-[10px] text-slate-300">
-                  {variable}
-                  {activeDataset.units[
-                    variable
-                  ]
-                    ? ` · ${activeDataset.units[variable]}`
-                    : ""}
-                  {" · "}
-                  {currentDepth ?? "—"} m
+                <div className="rounded border border-slate-800 bg-slate-950/85 px-3 py-2 text-right backdrop-blur-sm">
+                  <div className="text-[8px] uppercase tracking-[0.16em] text-slate-600">
+                    Observations
+                  </div>
+
+                  <div className="mt-0.5 font-mono text-[10px] text-slate-300">
+                    {observations.length}{" "}
+                    in-situ profiles
+                  </div>
                 </div>
               </div>
+            )}
 
-              <div className="rounded border border-slate-800 bg-slate-950/85 px-3 py-2 text-right backdrop-blur-sm">
-                <div className="text-[8px] uppercase tracking-[0.16em] text-slate-600">
-                  Observations
-                </div>
-
-                <div className="mt-0.5 font-mono text-[10px] text-slate-300">
-                  {observations.length}{" "}
-                  in-situ profiles
-                </div>
-              </div>
-            </div>
-          )}
+          {/* MINI PREVIEW */}
+          {miniExplorerOpen &&
+            activeDataset && (
+              <MiniOceanExplorer
+                dataset={activeDataset}
+                slice={slice ?? null}
+                observations={observations}
+                selectedObservationId={
+                  selectedObservationId
+                }
+                variable={variable}
+                depthIndex={depthIndex}
+                timeIndex={timeIndex}
+                isPlaying={isPlaying}
+                onVariableChange={
+                  setVariable
+                }
+                onDepthIndexChange={
+                  setDepthIndex
+                }
+                onTimeIndexChange={
+                  setTimeIndex
+                }
+                onTogglePlay={
+                  togglePlaying
+                }
+                onSelectObservation={
+                  selectObservation
+                }
+                onBackToRegion={
+                  handleBackToRegion
+                }
+                onClose={
+                  handleCloseExplorer
+                }
+                onOpenFullAnalysis={
+                  handleOpenFullAnalysis
+                }
+                opacity={opacity}
+                verticalExaggeration={verticalExaggeration}
+                onOpacityChange={setOpacity}
+                onExaggerationChange={setVerticalExaggeration}
+              />
+            )}
         </main>
 
-        {/* Analysis */}
-        <aside className="w-80 shrink-0 border-l border-slate-800 bg-slate-950">
-          <AnalysisPanel
-            observation={
-              selectedObservation
-            }
-            profile={profile}
-            comparison={
-              comparison
-            }
-            dataset={
-              activeDataset
-            }
-            loading={
-              analysisLoading
-            }
-            error={
-              analysisError
-            }
-          />
-        </aside>
+        {/* RIGHT ANALYSIS PANEL */}
+        {!miniExplorerOpen && (
+          <aside className="w-80 shrink-0 border-l border-slate-800 bg-slate-950">
+            <AnalysisPanel
+              observation={
+                selectedObservation
+              }
+              profile={profile}
+              comparison={
+                comparison
+              }
+              dataset={
+                activeDataset
+              }
+              loading={
+                analysisLoading
+              }
+              error={
+                analysisError
+              }
+            />
+          </aside>
+        )}
       </div>
     </div>
   );

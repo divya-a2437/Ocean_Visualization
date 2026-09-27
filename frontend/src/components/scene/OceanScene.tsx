@@ -23,6 +23,7 @@ import { EarthGlobe } from "./EarthGlobe";
 import { GlobeFieldRenderer } from "./GlobeFieldRenderer";
 import { ObservationMarkers } from "./ObservationMarkers";
 import { ValidationProfile3D } from "./ValidationProfile3D";
+
 import {
   GlobeCinematicController,
   type GlobeStage,
@@ -32,15 +33,22 @@ interface OceanSceneProps {
   dataset?: DatasetMetadata | null;
   slice?: ModelFieldSlice | null;
   observations?: Observation[];
+
   selectedObservationId?: string | null;
   selectedObservation?: Observation | null;
+
   comparison?: ModelObsComparison | null;
+
   loading?: boolean;
   error?: string | null;
+
   verticalExaggeration?: number;
+  opacity?: number;
+
   onSelectObservation?: (
     observationId: string,
   ) => void;
+
   onFieldClick?: () => void;
 }
 
@@ -78,28 +86,32 @@ function ErrorOverlay({
   );
 }
 
-function SceneContents({
-  dataset,
-  slice,
-  observations = [],
-  selectedObservationId = null,
-  selectedObservation,
-  comparison,
-  loading,
-  error,
-  verticalExaggeration = 1,
-  onSelectObservation,
-  onFieldClick,
-  stage,
-  onStageChange,
-  controlsRef,
-}: OceanSceneProps & {
+interface SceneContentsProps
+  extends OceanSceneProps {
   stage: GlobeStage;
   onStageChange: (
     stage: GlobeStage,
   ) => void;
   controlsRef: React.RefObject<any>;
-}) {
+}
+
+function SceneContents({
+  dataset,
+  slice,
+  observations = [],
+  selectedObservationId = null,
+  selectedObservation = null,
+  comparison = null,
+  loading = false,
+  error = null,
+  verticalExaggeration = 1,
+  opacity = 0.95,
+  onSelectObservation,
+  onFieldClick,
+  stage,
+  onStageChange,
+  controlsRef,
+}: SceneContentsProps) {
   const showField =
     stage !== "intro" &&
     !!slice;
@@ -111,20 +123,17 @@ function SceneContents({
   const handleObservationSelect = (
     observationId: string,
   ) => {
-    if (
-      typeof onSelectObservation ===
-      "function"
-    ) {
-      onSelectObservation(
-        observationId,
-      );
-    }
+    onSelectObservation?.(
+      observationId,
+    );
   };
 
   return (
     <>
+      {/* Real coloured Earth */}
       <EarthGlobe radius={5} />
 
+      {/* Cinematic geographic movement */}
       <GlobeCinematicController
         stage={stage}
         onStageChange={onStageChange}
@@ -133,11 +142,12 @@ function SceneContents({
         globeRadius={5}
       />
 
+      {/* Scientific model field */}
       {showField && slice && (
         <GlobeFieldRenderer
           slice={slice}
           radius={5.025}
-          opacity={0.92}
+          opacity={opacity}
           emphasis={stage === "field"}
           onClick={
             stage === "region"
@@ -147,13 +157,14 @@ function SceneContents({
         />
       )}
 
+      {/* In-situ / ARGO observations */}
       {showObservations &&
         dataset && (
           <ObservationMarkers
             observations={observations}
             dataset={dataset}
             selectedId={
-              selectedObservationId ?? null
+              selectedObservationId
             }
             onSelect={
               handleObservationSelect
@@ -161,6 +172,7 @@ function SceneContents({
           />
         )}
 
+      {/* Selected observation profile */}
       {selectedObservation &&
         comparison &&
         dataset && (
@@ -195,6 +207,7 @@ export function OceanScene({
   loading = false,
   error = null,
   verticalExaggeration = 1,
+  opacity = 0.95,
   onSelectObservation,
   onFieldClick,
 }: OceanSceneProps) {
@@ -209,13 +222,19 @@ export function OceanScene({
       return;
     }
 
-    if (
-      typeof onFieldClick ===
-      "function"
-    ) {
-      onFieldClick();
-    }
+    /*
+     * The parent page owns what happens after
+     * the region is selected.
+     *
+     * This callback opens the real MiniOceanExplorer
+     * from page.tsx.
+     */
+    onFieldClick?.();
 
+    /*
+     * The 3D world itself moves into field mode.
+     * The mini explorer is NOT rendered here.
+     */
     setStage("field");
   };
 
@@ -274,6 +293,7 @@ export function OceanScene({
             verticalExaggeration={
               verticalExaggeration
             }
+            opacity={opacity}
             onSelectObservation={
               onSelectObservation
             }

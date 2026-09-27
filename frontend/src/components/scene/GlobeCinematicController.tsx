@@ -13,7 +13,9 @@ export type GlobeStage =
 
 interface GlobeCinematicControllerProps {
   stage: GlobeStage;
-  onStageChange: (stage: GlobeStage) => void;
+  onStageChange: (
+    stage: GlobeStage,
+  ) => void;
   controlsRef: React.RefObject<any>;
   dataset?: DatasetMetadata | null;
   globeRadius?: number;
@@ -26,37 +28,70 @@ interface GeographicPoint {
 
 const INTRO_DELAY_MS = 700;
 const INTRO_FLIGHT_MS = 1900;
-const FIELD_FLIGHT_MS = 1500;
+
+/*
+ * The final dive is deliberately longer.
+ * This is the "mini video" feeling:
+ *
+ * globe
+ *   ↓
+ * region
+ *   ↓
+ * ocean field
+ */
+const FIELD_FLIGHT_MS = 2400;
 
 const REGION_SURFACE_DISTANCE = 5.5;
-const FIELD_SURFACE_DISTANCE = 0.9;
+
+/*
+ * This is close enough to the ocean region
+ * to reveal the field without putting the
+ * camera inside the globe.
+ */
+const FIELD_SURFACE_DISTANCE = 0.72;
 
 function latLonToSphere(
   lat: number,
   lon: number,
   radius: number,
 ) {
-  const latRad = THREE.MathUtils.degToRad(lat);
-  const lonRad = THREE.MathUtils.degToRad(lon);
+  const latRad =
+    THREE.MathUtils.degToRad(lat);
 
-  const cosLat = Math.cos(latRad);
+  const lonRad =
+    THREE.MathUtils.degToRad(lon);
+
+  const cosLat =
+    Math.cos(latRad);
 
   return new THREE.Vector3(
     radius *
       cosLat *
       Math.sin(lonRad),
-    radius * Math.sin(latRad),
+
+    radius *
+      Math.sin(latRad),
+
     radius *
       cosLat *
       Math.cos(lonRad),
   );
 }
 
+function easeInCubic(
+  value: number,
+) {
+  return value * value * value;
+}
+
 function easeInOutCubic(
   value: number,
 ) {
   return value < 0.5
-    ? 4 * value * value * value
+    ? 4 *
+        value *
+        value *
+        value
     : 1 -
         Math.pow(
           -2 * value + 2,
@@ -94,12 +129,6 @@ function getRegionTarget(
   const center =
     getDatasetCenter(dataset);
 
-  /*
-   * Move first toward eastern/central India.
-   *
-   * The scientific patch itself stays untouched.
-   * Only the camera target changes.
-   */
   return {
     lat: THREE.MathUtils.clamp(
       center.lat + 5,
@@ -150,6 +179,9 @@ export function GlobeCinematicController({
       geographicTarget: GeographicPoint,
       surfaceDistance: number,
       duration: number,
+      easing:
+        | ((value: number) => number) =
+        easeInOutCubic,
       onComplete?: () => void,
     ) => {
       const targetSurface =
@@ -176,7 +208,8 @@ export function GlobeCinematicController({
         targetNormal
           .clone()
           .multiplyScalar(
-            globeRadius * 0.985,
+            globeRadius *
+              0.985,
           );
 
       const startPosition =
@@ -184,6 +217,11 @@ export function GlobeCinematicController({
 
       const startTarget =
         controls.target.clone();
+
+      const startDistance =
+        camera.position.distanceTo(
+          controls.target,
+        );
 
       const startTime =
         performance.now();
@@ -207,21 +245,67 @@ export function GlobeCinematicController({
           );
 
         const progress =
-          easeInOutCubic(
+          easing(
             linearProgress,
           );
 
+        /*
+         * Position follows a smooth
+         * geographic camera path.
+         */
         camera.position.lerpVectors(
           startPosition,
           targetCameraPosition,
           progress,
         );
 
+        /*
+         * The look-at target travels with
+         * the camera, so the globe feels
+         * like one continuous geographic
+         * object rather than a hard jump.
+         */
         controls.target.lerpVectors(
           startTarget,
           targetLookAt,
           progress,
         );
+
+        /*
+         * Slightly tighten the camera
+         * during the dive.
+         */
+        const distance =
+          THREE.MathUtils.lerp(
+            startDistance,
+            camera.position.distanceTo(
+              controls.target,
+            ),
+            progress,
+          );
+
+        /*
+         * Keep the camera outside the
+         * globe while approaching.
+         */
+        if (
+          distance <
+          globeRadius +
+            surfaceDistance
+        ) {
+          camera.position
+            .sub(
+              controls.target,
+            )
+            .normalize()
+            .multiplyScalar(
+              globeRadius +
+                surfaceDistance,
+            )
+            .add(
+              controls.target,
+            );
+        }
 
         controls.update();
 
@@ -232,6 +316,7 @@ export function GlobeCinematicController({
             requestAnimationFrame(
               animate,
             );
+
           return;
         }
 
@@ -255,11 +340,11 @@ export function GlobeCinematicController({
     };
 
     /*
-     * STAGE 1
+     * -----------------------------------
+     * INTRO
+     * -----------------------------------
      *
-     * Full Earth is visible first.
-     * After a short pause, automatically
-     * fly toward India.
+     * Earth → geographic region
      */
     if (stage === "intro") {
       controls.enabled = false;
@@ -273,11 +358,14 @@ export function GlobeCinematicController({
             regionTarget,
             REGION_SURFACE_DISTANCE,
             INTRO_FLIGHT_MS,
+            easeInOutCubic,
             () => {
               if (
                 !cancelledRef.current
               ) {
-                controls.enabled = true;
+                controls.enabled =
+                  true;
+
                 onStageChange(
                   "region",
                 );
@@ -288,7 +376,10 @@ export function GlobeCinematicController({
 
       return () => {
         cancelledRef.current = true;
-        window.clearTimeout(timer);
+
+        window.clearTimeout(
+          timer,
+        );
 
         if (
           animationFrameRef.current !==
@@ -302,13 +393,14 @@ export function GlobeCinematicController({
     }
 
     /*
-     * STAGE 2
+     * -----------------------------------
+     * REGION
+     * -----------------------------------
      *
-     * Camera has reached India / Bay of
-     * Bengal region.
+     * User can inspect the region.
      *
-     * User can now interact with the
-     * scientific patch.
+     * IMPORTANT:
+     * We do NOT automatically dive.
      */
     if (stage === "region") {
       controls.enabled = true;
@@ -328,11 +420,13 @@ export function GlobeCinematicController({
     }
 
     /*
-     * STAGE 3
+     * -----------------------------------
+     * FIELD
+     * -----------------------------------
      *
-     * User clicked the scientific patch.
-     * Fly directly toward its geographic
-     * center instead of scaling the patch.
+     * User has pressed Explore.
+     *
+     * This is the cinematic "mini video".
      */
     if (stage === "field") {
       controls.enabled = false;
@@ -340,15 +434,35 @@ export function GlobeCinematicController({
       const fieldTarget =
         getDatasetCenter(dataset);
 
+      /*
+       * Start with a gentle ease-in.
+       *
+       * The camera initially moves
+       * slowly, then accelerates toward
+       * the selected ocean region.
+       */
       flyTo(
         fieldTarget,
         FIELD_SURFACE_DISTANCE,
         FIELD_FLIGHT_MS,
+        (value) => {
+          /*
+           * Combine a slow beginning with
+           * a smooth arrival.
+           */
+          const accelerated =
+            easeInCubic(value);
+
+          return easeInOutCubic(
+            accelerated,
+          );
+        },
         () => {
           if (
             !cancelledRef.current
           ) {
-            controls.enabled = true;
+            controls.enabled =
+              true;
           }
         },
       );
