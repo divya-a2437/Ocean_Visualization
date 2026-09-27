@@ -1,6 +1,8 @@
 # Data Schema
 
-The backend Pydantic models and frontend TypeScript interfaces use the same field names and casing.
+The backend Pydantic models and frontend TypeScript interfaces share field names and casing for the same API entities. This document describes the normalized API contract and the processed data behind it.
+
+The current real-data workflow combines a static Copernicus Marine GLORYS12V1 model/reanalysis subset with five CORA-derived ARGO profiles. A separate synthetic sample dataset remains available.
 
 ## DatasetMetadata
 
@@ -40,10 +42,16 @@ The legacy synthetic dataset does not currently populate `dataStatus`.
 The Copernicus processed metadata currently contains:
 
 ```json
-"dataStatus": "operational"
+{
+  "dataStatus": "operational"
+}
 ```
 
 This value comes from the source metadata. The application itself serves a static downloaded subset and should not be interpreted as a live operational data feed.
+
+The current dataset is `copernicus-bob-2020`, covering the Bay of Bengal (5-23 degrees north, 80-95 degrees east) from 1 to 3 January 2020. It contains temperature, salinity, eastward-current, and northward-current fields. Model depths run from approximately 0.494 m to 453.938 m.
+
+The TypeScript interface narrows `dataStatus` to the known labels shown above. The Pydantic model currently accepts an optional string and does not enforce that union.
 
 ## ModelFieldSlice
 Represents one 2D field at one variable, timestamp and depth.
@@ -79,9 +87,21 @@ interface Observation {
 }
 ```
 
-The current observation workflow uses synthetic Argo-style profiles.
+The `copernicus-bob-2020` observation collection contains five usable CORA-derived ARGO profiles with temperature and salinity measurements. Profiles are served as processed data and are not ingested at request time.
 
-The Copernicus dataset currently has an empty observation collection.
+A separate synthetic sample dataset remains available; it should not be confused with the real CORA/ARGO profiles associated with the Copernicus model subset.
+
+```json
+{
+  "id": "cora-argo-2902280-20200101135000",
+  "platformType": "argo",
+  "lat": 15.869,
+  "lon": 92.396,
+  "time": "2020-01-01T13:50:00Z"
+}
+```
+
+`platformType` is a string in the Pydantic model and is currently narrowed to `"argo" | "glider"` in TypeScript; Pydantic does not enforce that union.
 
 ## Profile
 
@@ -95,6 +115,8 @@ interface Profile {
 ```
 
 A profile contains observations of one variable at multiple depths.
+
+The API returns only the profile fields shown above; units are available from dataset metadata and are not repeated on a `Profile` object.
 
 ## ModelObsComparison
 
@@ -161,18 +183,20 @@ The comparison also records:
 ## Interpolation Conventions
 
 ### Horizontal
-Bilinear interpolation using latitude and longitude.
+Bilinear interpolation uses the four surrounding latitude/longitude grid values. If some are missing, the backend averages valid surrounding values; if all are missing, the result is invalid. Coordinates are clamped to the model grid, while the comparison route rejects observations outside the dataset bounding box.
 
 ### Vertical
-Linear interpolation by depth.
+Linear interpolation by depth. Interpolation does not extrapolate beyond the available model depth range and does not cross missing adjacent model values.
 
 ### Time
-Nearest available model timestep.
+Nearest available model timestep. `timeDifferenceHours` reports the absolute separation from the observation timestamp.
 
 ### Depth Range
 Observation depths outside the model depth range are excluded.
 
 The comparison does not extrapolate beyond the available model depths.
+
+The current comparison response identifies its methods as `"bilinear latitude/longitude"`, `"linear depth"`, and `"nearest model timestep"` in `interpolationHorizontal`, `interpolationVertical`, and `interpolationTime`, respectively.
 
 ## General Conventions
 
@@ -203,13 +227,13 @@ They are never represented as zero.
 ## Source Variable Mapping
 The preprocessing layer converts source-specific variable names into internal names.
 
-| Internal variable | Copernicus | Argo-style |
+| Internal variable | Copernicus | CORA / ARGO |
 |---|---|---|
 | `temperature` | `thetao` | `TEMP` |
 | `salinity` | `so` | `PSAL` |
 | `eastward_current` | `uo` | Not available |
 | `northward_current` | `vo` | Not available |
-| `depth` | `depth` | `PRES` |
+| `depth` | `depth` | `PRES` (pressure converted to metres during preprocessing) |
 
 The frontend only uses the internal variable names.
 
@@ -217,7 +241,40 @@ The frontend only uses the internal variable names.
 
 The synthetic dataset currently contains temperature and salinity only.
 
+## Variable units
+
+| Variable | Unit |
+| --- | --- |
+| `temperature` | `degC` |
+| `salinity` | `PSU` |
+| `eastward_current` | `m/s` |
+| `northward_current` | `m/s` |
+
+Observation temperature and salinity use the corresponding units after preprocessing.
+
+## Provenance and processed files
+
+Dataset metadata includes `sourceLabel`, which identifies the provider, product, dataset, and model. The Copernicus source is Copernicus Marine Service product `GLOBAL_MULTIYEAR_PHY_001_030`, dataset `cmems_mod_glo_phy_my_0.083deg_P1D-m`, model/reanalysis MERCATOR GLORYS12V1. The observation source is CORA, with ARGO as the platform. All data is processed locally; runtime requests do not depend on Copernicus or CORA services.
+
+The runtime dataset is stored under `backend/data/processed/copernicus-bob-2020/`:
+
+```text
+dataset_copernicus-bob-2020.json
+observations_copernicus-bob-2020.json
+profiles/
+  <observation_id>_temperature.json
+  <observation_id>_salinity.json
+fields/
+  temperature/
+  salinity/
+  eastward_current/
+  northward_current/
+```
+
+Each profile is stored as a separate variable-specific file. Each model-field file represents one variable, time index, and depth index. The API loads only the requested slice for field requests.
+
 ## Scientific Calculation Boundary
+
 The API performs deterministic interpolation and metric calculations.
 
 No machine learning or LLM-generated values are used in the scientific comparison pipeline.
