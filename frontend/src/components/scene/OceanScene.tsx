@@ -89,9 +89,11 @@ function ErrorOverlay({
 interface SceneContentsProps
   extends OceanSceneProps {
   stage: GlobeStage;
+
   onStageChange: (
     stage: GlobeStage,
   ) => void;
+
   controlsRef: React.RefObject<any>;
 }
 
@@ -112,6 +114,21 @@ function SceneContents({
   onStageChange,
   controlsRef,
 }: SceneContentsProps) {
+  /*
+   * ---------------------------------------
+   * FIELD VISIBILITY
+   * ---------------------------------------
+   *
+   * During intro:
+   *   Earth only
+   *
+   * During region:
+   *   Earth + scientific patch
+   *
+   * During field:
+   *   Earth + scientific patch + ARGO
+   */
+
   const showField =
     stage !== "intro" &&
     !!slice;
@@ -130,10 +147,16 @@ function SceneContents({
 
   return (
     <>
-      {/* Real coloured Earth */}
+      {/* -------------------------------- */}
+      {/* REAL COLOURED EARTH              */}
+      {/* -------------------------------- */}
+
       <EarthGlobe radius={5} />
 
-      {/* Cinematic geographic movement */}
+      {/* -------------------------------- */}
+      {/* GEOGRAPHIC CAMERA                */}
+      {/* -------------------------------- */}
+
       <GlobeCinematicController
         stage={stage}
         onStageChange={onStageChange}
@@ -142,22 +165,31 @@ function SceneContents({
         globeRadius={5}
       />
 
-      {/* Scientific model field */}
-      {showField && slice && (
-        <GlobeFieldRenderer
-          slice={slice}
-          radius={5.025}
-          opacity={opacity}
-          emphasis={stage === "field"}
-          onClick={
-            stage === "region"
-              ? onFieldClick
-              : undefined
-          }
-        />
-      )}
+      {/* -------------------------------- */}
+      {/* SCIENTIFIC MODEL FIELD           */}
+      {/* -------------------------------- */}
 
-      {/* In-situ / ARGO observations */}
+      {showField &&
+        slice && (
+          <GlobeFieldRenderer
+            slice={slice}
+            radius={5.025}
+            opacity={opacity}
+            emphasis={
+              stage === "field"
+            }
+            onClick={
+              stage === "region"
+                ? onFieldClick
+                : undefined
+            }
+          />
+        )}
+
+      {/* -------------------------------- */}
+      {/* REAL CORA / ARGO OBSERVATIONS    */}
+      {/* -------------------------------- */}
+
       {showObservations &&
         dataset && (
           <ObservationMarkers
@@ -172,7 +204,10 @@ function SceneContents({
           />
         )}
 
-      {/* Selected observation profile */}
+      {/* -------------------------------- */}
+      {/* SELECTED PROFILE                 */}
+      {/* -------------------------------- */}
+
       {selectedObservation &&
         comparison &&
         dataset && (
@@ -188,10 +223,18 @@ function SceneContents({
           />
         )}
 
-      {loading && <LoadingOverlay />}
+      {/* -------------------------------- */}
+      {/* LOADING / ERROR                  */}
+      {/* -------------------------------- */}
+
+      {loading && (
+        <LoadingOverlay />
+      )}
 
       {error && (
-        <ErrorOverlay message={error} />
+        <ErrorOverlay
+          message={error}
+        />
       )}
     </>
   );
@@ -217,24 +260,39 @@ export function OceanScene({
   const controlsRef =
     useRef<any>(null);
 
+  /*
+   * ---------------------------------------
+   * FIELD CLICK
+   * ---------------------------------------
+   *
+   * Region stage:
+   *
+   *   user clicks scientific patch
+   *
+   *             ↓
+   *
+   *   parent opens MiniOceanExplorer
+   *
+   *             ↓
+   *
+   *   scene enters field stage
+   *
+   *             ↓
+   *
+   *   camera dives geographically
+   *
+   *             ↓
+   *
+   *   ARGO markers become visible
+   */
+
   const handleFieldClick = () => {
     if (stage !== "region") {
       return;
     }
 
-    /*
-     * The parent page owns what happens after
-     * the region is selected.
-     *
-     * This callback opens the real MiniOceanExplorer
-     * from page.tsx.
-     */
     onFieldClick?.();
 
-    /*
-     * The 3D world itself moves into field mode.
-     * The mini explorer is NOT rendered here.
-     */
     setStage("field");
   };
 
@@ -262,17 +320,29 @@ export function OceanScene({
           args={["#050b12"]}
         />
 
+        {/* -------------------------------- */}
+        {/* EARTH LIGHTING                   */}
+        {/* -------------------------------- */}
+
         <ambientLight
           intensity={1.8}
         />
 
         <directionalLight
-          position={[8, 10, 10]}
+          position={[
+            8,
+            10,
+            10,
+          ]}
           intensity={2.2}
         />
 
         <directionalLight
-          position={[-8, 4, -6]}
+          position={[
+            -8,
+            4,
+            -6,
+          ]}
           intensity={0.7}
         />
 
@@ -280,14 +350,18 @@ export function OceanScene({
           <SceneContents
             dataset={dataset}
             slice={slice}
-            observations={observations}
+            observations={
+              observations
+            }
             selectedObservationId={
               selectedObservationId
             }
             selectedObservation={
               selectedObservation
             }
-            comparison={comparison}
+            comparison={
+              comparison
+            }
             loading={loading}
             error={error}
             verticalExaggeration={
@@ -309,6 +383,10 @@ export function OceanScene({
             }
           />
         </Suspense>
+
+        {/* -------------------------------- */}
+        {/* USER NAVIGATION                  */}
+        {/* -------------------------------- */}
 
         <OrbitControls
           ref={controlsRef}

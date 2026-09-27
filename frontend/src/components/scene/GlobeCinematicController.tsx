@@ -26,29 +26,67 @@ interface GeographicPoint {
   lon: number;
 }
 
+/*
+ * -----------------------------------------
+ * CAMERA TIMING
+ * -----------------------------------------
+ */
+
 const INTRO_DELAY_MS = 700;
-const INTRO_FLIGHT_MS = 1900;
+const INTRO_FLIGHT_MS = 2400;
+const FIELD_FLIGHT_MS = 2600;
 
 /*
- * The final dive is deliberately longer.
- * This is the "mini video" feeling:
+ * -----------------------------------------
+ * EARTH / CAMERA DISTANCES
+ * -----------------------------------------
  *
- * globe
- *   ↓
- * region
- *   ↓
- * ocean field
+ * These are distances above the globe surface.
+ *
+ * Region:
+ *   Far enough to understand India + Bay of Bengal.
+ *
+ * Field:
+ *   Close enough for the scientific field
+ *   to become the dominant visual object.
  */
-const FIELD_FLIGHT_MS = 2400;
 
-const REGION_SURFACE_DISTANCE = 5.5;
+const REGION_SURFACE_DISTANCE = 5.4;
+const FIELD_SURFACE_DISTANCE = 0.78;
 
 /*
- * This is close enough to the ocean region
- * to reveal the field without putting the
- * camera inside the globe.
+ * -----------------------------------------
+ * GEOGRAPHIC WAYPOINT
+ * -----------------------------------------
+ *
+ * We deliberately use India as the first
+ * geographic destination instead of deriving
+ * the first camera target from the dataset.
+ *
+ * This gives the experience:
+ *
+ *       EARTH
+ *         ↓
+ *       INDIA
+ *         ↓
+ *   BAY OF BENGAL
+ *         ↓
+ *      FIELD
+ *
+ * The scientific dataset remains the final
+ * geographic destination.
  */
-const FIELD_SURFACE_DISTANCE = 0.72;
+
+const INDIA_TARGET: GeographicPoint = {
+  lat: 21.0,
+  lon: 78.5,
+};
+
+/*
+ * -----------------------------------------
+ * GEO → SPHERE
+ * -----------------------------------------
+ */
 
 function latLonToSphere(
   lat: number,
@@ -78,11 +116,11 @@ function latLonToSphere(
   );
 }
 
-function easeInCubic(
-  value: number,
-) {
-  return value * value * value;
-}
+/*
+ * -----------------------------------------
+ * EASING
+ * -----------------------------------------
+ */
 
 function easeInOutCubic(
   value: number,
@@ -99,6 +137,18 @@ function easeInOutCubic(
         ) /
           2;
 }
+
+function easeInCubic(
+  value: number,
+) {
+  return value * value * value;
+}
+
+/*
+ * -----------------------------------------
+ * DATASET CENTER
+ * -----------------------------------------
+ */
 
 function getDatasetCenter(
   dataset?: DatasetMetadata | null,
@@ -123,23 +173,89 @@ function getDatasetCenter(
   };
 }
 
-function getRegionTarget(
-  dataset?: DatasetMetadata | null,
-): GeographicPoint {
-  const center =
-    getDatasetCenter(dataset);
+/*
+ * -----------------------------------------
+ * GEOGRAPHIC ARC
+ * -----------------------------------------
+ *
+ * Instead of simply lerping X/Y/Z positions,
+ * we move along the surface of the Earth.
+ *
+ * This keeps the camera journey geographically
+ * meaningful.
+ */
 
-  return {
-    lat: THREE.MathUtils.clamp(
-      center.lat + 5,
-      -70,
-      70,
-    ),
+function interpolateGeographicPoint(
+  start: THREE.Vector3,
+  end: THREE.Vector3,
+  progress: number,
+) {
+  const startNormal =
+    start.clone().normalize();
 
-    lon:
-      center.lon - 5,
-  };
+  const endNormal =
+    end.clone().normalize();
+
+  const quaternion =
+    new THREE.Quaternion();
+
+  quaternion.setFromUnitVectors(
+    startNormal,
+    endNormal,
+  );
+
+  const currentNormal =
+    startNormal
+      .clone()
+      .applyQuaternion(
+        quaternion,
+      );
+
+  /*
+   * The above gives the full destination
+   * direction. We instead use spherical
+   * interpolation so the camera travels
+   * progressively around Earth.
+   */
+
+  const angle =
+    startNormal.angleTo(
+      endNormal,
+    );
+
+  if (angle < 0.000001) {
+    return startNormal.clone();
+  }
+
+  const sinAngle =
+    Math.sin(angle);
+
+  const weightStart =
+    Math.sin(
+      (1 - progress) * angle,
+    ) / sinAngle;
+
+  const weightEnd =
+    Math.sin(
+      progress * angle,
+    ) / sinAngle;
+
+  return startNormal
+    .clone()
+    .multiplyScalar(weightStart)
+    .add(
+      endNormal
+        .clone()
+        .multiplyScalar(weightEnd),
+    )
+    .normalize();
 }
+
+/*
+ * -----------------------------------------
+ * COMPONENT
+ * -----------------------------------------
+ */
 
 export function GlobeCinematicController({
   stage,
@@ -175,6 +291,12 @@ export function GlobeCinematicController({
       return;
     }
 
+    /*
+     * -------------------------------------
+     * FLY TO GEOGRAPHIC LOCATION
+     * -------------------------------------
+     */
+
     const flyTo = (
       geographicTarget: GeographicPoint,
       surfaceDistance: number,
@@ -184,20 +306,47 @@ export function GlobeCinematicController({
         easeInOutCubic,
       onComplete?: () => void,
     ) => {
-      const targetSurface =
-        latLonToSphere(
-          geographicTarget.lat,
-          geographicTarget.lon,
-          globeRadius,
-        );
-
-      const targetNormal =
-        targetSurface
+      /*
+       * Current camera direction from Earth.
+       */
+      const startDirection =
+        camera.position
           .clone()
           .normalize();
 
+      /*
+       * Destination geographic direction.
+       */
+      const targetDirection =
+        latLonToSphere(
+          geographicTarget.lat,
+          geographicTarget.lon,
+          1,
+        ).normalize();
+
+      /*
+       * Keep the current camera altitude
+       * as the starting radius.
+       */
+      const startRadius =
+        Math.max(
+          camera.position.length(),
+          globeRadius +
+            surfaceDistance,
+        );
+
+      const startTarget =
+        controls.target.clone();
+
+      const targetSurface =
+        targetDirection
+          .clone()
+          .multiplyScalar(
+            globeRadius,
+          );
+
       const targetCameraPosition =
-        targetNormal
+        targetDirection
           .clone()
           .multiplyScalar(
             globeRadius +
@@ -205,23 +354,12 @@ export function GlobeCinematicController({
           );
 
       const targetLookAt =
-        targetNormal
+        targetDirection
           .clone()
           .multiplyScalar(
             globeRadius *
               0.985,
           );
-
-      const startPosition =
-        camera.position.clone();
-
-      const startTarget =
-        controls.target.clone();
-
-      const startDistance =
-        camera.position.distanceTo(
-          controls.target,
-        );
 
       const startTime =
         performance.now();
@@ -250,62 +388,52 @@ export function GlobeCinematicController({
           );
 
         /*
-         * Position follows a smooth
-         * geographic camera path.
+         * Travel around the Earth rather
+         * than cutting straight through space.
          */
-        camera.position.lerpVectors(
-          startPosition,
-          targetCameraPosition,
-          progress,
-        );
+        const currentDirection =
+          interpolateGeographicPoint(
+            startDirection,
+            targetDirection,
+            progress,
+          );
 
         /*
-         * The look-at target travels with
-         * the camera, so the globe feels
-         * like one continuous geographic
-         * object rather than a hard jump.
+         * Camera altitude eases separately.
+         *
+         * This produces:
+         *
+         * high globe view
+         *      ↓
+         * geographic approach
+         *      ↓
+         * regional view
+         */
+        const currentRadius =
+          THREE.MathUtils.lerp(
+            startRadius,
+            globeRadius +
+              surfaceDistance,
+            progress,
+          );
+
+        camera.position
+          .copy(currentDirection)
+          .multiplyScalar(
+            currentRadius,
+          );
+
+        /*
+         * Look slightly toward the Earth
+         * surface instead of directly at the
+         * centre. This keeps the destination
+         * visually readable.
          */
         controls.target.lerpVectors(
           startTarget,
           targetLookAt,
           progress,
         );
-
-        /*
-         * Slightly tighten the camera
-         * during the dive.
-         */
-        const distance =
-          THREE.MathUtils.lerp(
-            startDistance,
-            camera.position.distanceTo(
-              controls.target,
-            ),
-            progress,
-          );
-
-        /*
-         * Keep the camera outside the
-         * globe while approaching.
-         */
-        if (
-          distance <
-          globeRadius +
-            surfaceDistance
-        ) {
-          camera.position
-            .sub(
-              controls.target,
-            )
-            .normalize()
-            .multiplyScalar(
-              globeRadius +
-                surfaceDistance,
-            )
-            .add(
-              controls.target,
-            );
-        }
 
         controls.update();
 
@@ -320,6 +448,11 @@ export function GlobeCinematicController({
           return;
         }
 
+        /*
+         * Snap to exact final geographic
+         * position to avoid accumulated
+         * floating-point drift.
+         */
         camera.position.copy(
           targetCameraPosition,
         );
@@ -340,22 +473,27 @@ export function GlobeCinematicController({
     };
 
     /*
-     * -----------------------------------
+     * -------------------------------------
      * INTRO
-     * -----------------------------------
+     * -------------------------------------
      *
-     * Earth → geographic region
+     * Earth
+     *   ↓
+     * India
+     *
+     * We deliberately stop here.
+     * The user gets a chance to inspect
+     * the geographic context before
+     * entering the scientific region.
      */
+
     if (stage === "intro") {
       controls.enabled = false;
-
-      const regionTarget =
-        getRegionTarget(dataset);
 
       const timer =
         window.setTimeout(() => {
           flyTo(
-            regionTarget,
+            INDIA_TARGET,
             REGION_SURFACE_DISTANCE,
             INTRO_FLIGHT_MS,
             easeInOutCubic,
@@ -393,15 +531,20 @@ export function GlobeCinematicController({
     }
 
     /*
-     * -----------------------------------
+     * -------------------------------------
      * REGION
-     * -----------------------------------
+     * -------------------------------------
      *
-     * User can inspect the region.
+     * User is now looking at India +
+     * Bay of Bengal.
      *
-     * IMPORTANT:
-     * We do NOT automatically dive.
+     * The model field is visible.
+     *
+     * NOTHING automatically dives.
+     *
+     * The user clicks the field patch.
      */
+
     if (stage === "region") {
       controls.enabled = true;
 
@@ -420,35 +563,30 @@ export function GlobeCinematicController({
     }
 
     /*
-     * -----------------------------------
+     * -------------------------------------
      * FIELD
-     * -----------------------------------
+     * -------------------------------------
      *
-     * User has pressed Explore.
+     * User clicked the Bay of Bengal
+     * scientific field.
      *
-     * This is the cinematic "mini video".
+     * Now perform the deep geographic dive.
      */
+
     if (stage === "field") {
       controls.enabled = false;
 
       const fieldTarget =
         getDatasetCenter(dataset);
 
-      /*
-       * Start with a gentle ease-in.
-       *
-       * The camera initially moves
-       * slowly, then accelerates toward
-       * the selected ocean region.
-       */
       flyTo(
         fieldTarget,
         FIELD_SURFACE_DISTANCE,
         FIELD_FLIGHT_MS,
         (value) => {
           /*
-           * Combine a slow beginning with
-           * a smooth arrival.
+           * Start gently and accelerate into
+           * the scientific region.
            */
           const accelerated =
             easeInCubic(value);
