@@ -157,8 +157,8 @@ export function ObservationMarkers({
               >
                 <ringGeometry
                   args={[
-                    radius * 0.025,
-                    radius * 0.038,
+                    radius * 0.018,
+                    radius * 0.028,
                     32,
                   ]}
                 />
@@ -189,8 +189,8 @@ export function ObservationMarkers({
               <sphereGeometry
                 args={[
                   selected
-                    ? radius * 0.023
-                    : radius * 0.015,
+                    ? radius * 0.015
+                    : radius * 0.009,
                   16,
                   16,
                 ]}
